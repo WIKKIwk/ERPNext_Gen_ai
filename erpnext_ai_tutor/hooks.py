@@ -3,7 +3,7 @@ app_title = "ERPNext AI Tutor"
 app_publisher = "Abdulfattox Qurbonov"
 app_description = "Desk-side AI tutor widget with error capture"
 app_email = "wikki@example.com"
-app_license = "mit"
+app_license = "Apache-2.0"
 
 # Apps
 # ------------------

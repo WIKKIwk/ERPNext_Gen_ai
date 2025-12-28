@@ -30,4 +30,4 @@ Pre-commit is configured to use the following tools for checking and formatting 
 
 ### License
 
-MIT License. See `license.txt`.
+Apache License 2.0. See `license.txt`.
