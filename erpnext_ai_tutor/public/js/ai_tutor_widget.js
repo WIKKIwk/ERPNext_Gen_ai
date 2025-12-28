@@ -6,6 +6,11 @@
 	const METHOD_GET_CONFIG = "erpnext_ai_tutor.api.get_tutor_config";
 	const METHOD_CHAT = "erpnext_ai_tutor.api.chat";
 
+	const STORAGE_VERSION = 1;
+	const STORAGE_KEY_PREFIX = "erpnext_ai_tutor:";
+	const MAX_CONVERSATIONS = 20;
+	const MAX_MESSAGES_PER_CONVERSATION = 200;
+
 	const SENSITIVE_KEY_PARTS = [
 		"password",
 		"passwd",
@@ -69,6 +74,26 @@
 		}
 	}
 
+	function formatTime(ts) {
+		try {
+			return new Date(ts).toLocaleTimeString();
+		} catch {
+			return nowTime();
+		}
+	}
+
+	function makeId(prefix = "chat") {
+		const rand = Math.random().toString(16).slice(2, 10);
+		return `${prefix}_${Date.now().toString(16)}_${rand}`;
+	}
+
+	function clip(text, max = 60) {
+		const s = String(text ?? "").replace(/\s+/g, " ").trim();
+		if (!s) return "";
+		if (s.length <= max) return s;
+		return s.slice(0, max - 1) + "…";
+	}
+
 	function getFormContext(includeDocValues) {
 		const frm = window.cur_frm;
 		if (!frm || !frm.doctype) return null;
@@ -121,25 +146,39 @@
 		return sanitize(snapshot);
 	}
 
+	function getStorageKey() {
+		const user = frappe?.session?.user || "Guest";
+		return `${STORAGE_KEY_PREFIX}${window.location.host}:${user}:v${STORAGE_VERSION}`;
+	}
+
 	class TutorWidget {
 		constructor() {
 			this.config = null;
 			this.aiReady = false;
 			this.isOpen = false;
 			this.history = [];
+			this.conversations = [];
+			this.activeConversationId = null;
 			this.lastEvent = null;
 			this.$root = null;
 			this.$drawer = null;
 			this.$body = null;
+			this.$history = null;
+			this.$footer = null;
 			this.$input = null;
 			this.$send = null;
 			this.$pill = null;
+			this.$historyBtn = null;
+			this.$newChatBtn = null;
 		}
 
 		async init() {
 			this.render();
+			this.loadChatState();
 			await this.loadConfig();
 			this.installHooks();
+			this.ensureConversation();
+			this.renderActiveConversation();
 		}
 
 		render() {
@@ -157,11 +196,18 @@
 						</div>
 						<div class="erpnext-ai-tutor-header-spacer"></div>
 						<span class="erpnext-ai-tutor-pill erpnext-ai-tutor-hidden"></span>
+						<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-history-btn" type="button" aria-label="Chatlar tarixi">
+							${frappe?.utils?.icon ? frappe.utils.icon("es-line-time", "sm") : "🕘"}
+						</button>
+						<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-new-btn" type="button" aria-label="Yangi chat">
+							${frappe?.utils?.icon ? frappe.utils.icon("es-line-add", "sm") : "+"}
+						</button>
 						<button class="erpnext-ai-tutor-close" type="button" aria-label="Yopish">
 							${frappe?.utils?.icon ? frappe.utils.icon("close", "sm") : "×"}
 						</button>
 					</div>
 					<div class="erpnext-ai-tutor-body"></div>
+					<div class="erpnext-ai-tutor-history erpnext-ai-tutor-hidden"></div>
 					<div class="erpnext-ai-tutor-footer">
 						<form class="erpnext-ai-tutor-form">
 							<textarea class="erpnext-ai-tutor-input" rows="1" placeholder="Savolingizni yozing..."></textarea>
@@ -175,12 +221,18 @@
 			this.$root = root;
 			this.$drawer = root.querySelector(".erpnext-ai-tutor-drawer");
 			this.$body = root.querySelector(".erpnext-ai-tutor-body");
+			this.$history = root.querySelector(".erpnext-ai-tutor-history");
+			this.$footer = root.querySelector(".erpnext-ai-tutor-footer");
 			this.$input = root.querySelector(".erpnext-ai-tutor-input");
 			this.$send = root.querySelector(".erpnext-ai-tutor-send");
 			this.$pill = root.querySelector(".erpnext-ai-tutor-pill");
+			this.$historyBtn = root.querySelector(".erpnext-ai-tutor-history-btn");
+			this.$newChatBtn = root.querySelector(".erpnext-ai-tutor-new-btn");
 
 			root.querySelector(".erpnext-ai-tutor-fab").addEventListener("click", () => this.toggle());
 			root.querySelector(".erpnext-ai-tutor-close").addEventListener("click", () => this.close());
+			this.$historyBtn.addEventListener("click", () => this.toggleHistory());
+			this.$newChatBtn.addEventListener("click", () => this.newChat());
 
 			root.querySelector(".erpnext-ai-tutor-form").addEventListener("submit", async (e) => {
 				e.preventDefault();
@@ -193,6 +245,208 @@
 					this.sendUserMessage();
 				}
 			});
+		}
+
+		loadChatState() {
+			try {
+				const raw = window.localStorage ? window.localStorage.getItem(getStorageKey()) : null;
+				if (!raw) return;
+				const parsed = JSON.parse(raw);
+				if (!parsed || parsed.version !== STORAGE_VERSION) return;
+				if (Array.isArray(parsed.conversations)) this.conversations = parsed.conversations;
+				if (typeof parsed.active_conversation_id === "string") {
+					this.activeConversationId = parsed.active_conversation_id;
+				}
+			} catch {
+				// ignore
+			}
+		}
+
+		saveChatState() {
+			if (!window.localStorage) return;
+			const payload = {
+				version: STORAGE_VERSION,
+				active_conversation_id: this.activeConversationId,
+				conversations: this.conversations,
+			};
+			try {
+				window.localStorage.setItem(getStorageKey(), JSON.stringify(payload));
+			} catch {
+				// Quota exceeded or storage blocked; try to prune and retry once.
+				try {
+					this.pruneChatState();
+					window.localStorage.setItem(getStorageKey(), JSON.stringify(payload));
+				} catch {
+					// ignore
+				}
+			}
+		}
+
+		pruneChatState() {
+			// Keep only the most recent conversations/messages to avoid storage bloat.
+			const convs = Array.isArray(this.conversations) ? this.conversations : [];
+			convs.sort((a, b) => (b?.updated_at || 0) - (a?.updated_at || 0));
+			const trimmed = convs.slice(0, MAX_CONVERSATIONS);
+			for (const c of trimmed) {
+				if (Array.isArray(c.messages)) {
+					c.messages = c.messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
+				} else {
+					c.messages = [];
+				}
+			}
+			this.conversations = trimmed;
+		}
+
+		getActiveConversation() {
+			if (!this.activeConversationId) return null;
+			return this.conversations.find((c) => c && c.id === this.activeConversationId) || null;
+		}
+
+		ensureConversation() {
+			if (!Array.isArray(this.conversations)) this.conversations = [];
+			if (this.getActiveConversation()) return;
+			if (this.conversations.length) {
+				// fall back to most recent
+				this.conversations.sort((a, b) => (b?.updated_at || 0) - (a?.updated_at || 0));
+				this.activeConversationId = this.conversations[0]?.id || null;
+				return;
+			}
+			this.newChat({ render: false });
+		}
+
+		newChat(opts = { render: true }) {
+			const id = makeId("tutor");
+			const now = Date.now();
+			const conversation = {
+				id,
+				title: "Yangi chat",
+				created_at: now,
+				updated_at: now,
+				messages: [],
+			};
+			this.conversations.unshift(conversation);
+			this.activeConversationId = id;
+			this.pruneChatState();
+			this.saveChatState();
+			if (opts.render) {
+				this.hideHistory();
+				this.renderActiveConversation();
+				this.open();
+			}
+		}
+
+		setConversationTitleIfNeeded(message) {
+			const conv = this.getActiveConversation();
+			if (!conv) return;
+			if (conv.title && conv.title !== "Yangi chat") return;
+
+			const isAuto = String(message || "").trim().startsWith("ERP tizimida xatolik/ogohlantirish chiqdi.");
+			if (isAuto && this.lastEvent) {
+				const prefix = this.lastEvent.severity === "error" ? "Xatolik" : "Ogohlantirish";
+				const title = clip(this.lastEvent.title || this.lastEvent.message || "", 48);
+				conv.title = title ? `${prefix}: ${title}` : `${prefix}`;
+			} else {
+				conv.title = clip(message, 48) || "Yangi chat";
+			}
+		}
+
+		renderActiveConversation() {
+			const conv = this.getActiveConversation();
+			this.history = [];
+			this.$body.innerHTML = "";
+			if (!conv) return;
+
+			const messages = Array.isArray(conv.messages) ? conv.messages : [];
+			for (const m of messages) {
+				if (!m || !m.role) continue;
+				this.history.push({ role: m.role, content: m.content });
+				this.appendToDOM(m.role, m.content, m.ts);
+			}
+			this.$body.scrollTop = this.$body.scrollHeight;
+		}
+
+		appendToDOM(role, content, ts) {
+			const wrap = document.createElement("div");
+			wrap.className = `erpnext-ai-tutor-message ${role}`;
+
+			const bubble = document.createElement("div");
+			bubble.className = "erpnext-ai-tutor-bubble";
+
+			const text = document.createElement("div");
+			text.className = "erpnext-ai-tutor-text";
+			text.textContent = String(content ?? "");
+
+			const meta = document.createElement("div");
+			meta.className = "erpnext-ai-tutor-meta";
+			meta.textContent = ts ? formatTime(ts) : nowTime();
+
+			bubble.append(text, meta);
+			wrap.appendChild(bubble);
+			this.$body.appendChild(wrap);
+		}
+
+		toggleHistory() {
+			if (!this.$history || !this.$body) return;
+			const isHidden = this.$history.classList.contains("erpnext-ai-tutor-hidden");
+			if (isHidden) this.showHistory();
+			else this.hideHistory();
+		}
+
+		showHistory() {
+			this.renderHistoryList();
+			this.$history.classList.remove("erpnext-ai-tutor-hidden");
+			this.$body.classList.add("erpnext-ai-tutor-hidden");
+			this.$footer.classList.add("erpnext-ai-tutor-hidden");
+		}
+
+		hideHistory() {
+			this.$history.classList.add("erpnext-ai-tutor-hidden");
+			this.$body.classList.remove("erpnext-ai-tutor-hidden");
+			this.$footer.classList.remove("erpnext-ai-tutor-hidden");
+		}
+
+		renderHistoryList() {
+			if (!this.$history) return;
+			const convs = Array.isArray(this.conversations) ? [...this.conversations] : [];
+			convs.sort((a, b) => (b?.updated_at || 0) - (a?.updated_at || 0));
+
+			if (!convs.length) {
+				this.$history.innerHTML = `<div class="erpnext-ai-tutor-history-empty">Hozircha chat yo‘q.</div>`;
+				return;
+			}
+
+			const rows = convs
+				.map((c) => {
+					const title = clip(c?.title || "Chat", 60);
+					const meta = c?.updated_at ? formatTime(c.updated_at) : "";
+					const active = c?.id === this.activeConversationId ? "active" : "";
+					return `
+						<button class="erpnext-ai-tutor-history-item ${active}" type="button" data-id="${String(c?.id || "")}">
+							<div class="erpnext-ai-tutor-history-item-title">${title}</div>
+							<div class="erpnext-ai-tutor-history-item-meta">${meta}</div>
+						</button>
+					`;
+				})
+				.join("");
+
+			this.$history.innerHTML = `
+				<div class="erpnext-ai-tutor-history-title-row">
+					<div class="erpnext-ai-tutor-history-title">Chatlar</div>
+				</div>
+				<div class="erpnext-ai-tutor-history-list">${rows}</div>
+			`;
+
+			for (const el of this.$history.querySelectorAll(".erpnext-ai-tutor-history-item")) {
+				el.addEventListener("click", () => {
+					const id = el.getAttribute("data-id");
+					if (!id) return;
+					this.activeConversationId = id;
+					this.saveChatState();
+					this.hideHistory();
+					this.renderActiveConversation();
+					this.open();
+				});
+			}
 		}
 
 		async loadConfig() {
@@ -339,24 +593,22 @@
 		}
 
 		append(role, content) {
+			this.ensureConversation();
+			this.setConversationTitleIfNeeded(role === "user" ? content : "");
+
+			const ts = Date.now();
 			this.history.push({ role, content });
-			const wrap = document.createElement("div");
-			wrap.className = `erpnext-ai-tutor-message ${role}`;
+			this.appendToDOM(role, content, ts);
 
-			const bubble = document.createElement("div");
-			bubble.className = "erpnext-ai-tutor-bubble";
-
-			const text = document.createElement("div");
-			text.className = "erpnext-ai-tutor-text";
-			text.textContent = String(content ?? "");
-
-			const meta = document.createElement("div");
-			meta.className = "erpnext-ai-tutor-meta";
-			meta.textContent = nowTime();
-
-			bubble.append(text, meta);
-			wrap.appendChild(bubble);
-			this.$body.appendChild(wrap);
+			const conv = this.getActiveConversation();
+			if (conv) {
+				if (!Array.isArray(conv.messages)) conv.messages = [];
+				conv.messages.push({ role, content, ts });
+				conv.updated_at = ts;
+				conv.messages = conv.messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
+				this.pruneChatState();
+				this.saveChatState();
+			}
 			this.$body.scrollTop = this.$body.scrollHeight;
 		}
 
@@ -388,6 +640,7 @@
 		}
 
 		async ask(text) {
+			this.hideHistory();
 			this.append("user", text);
 			this.setBusy(true);
 			try {
