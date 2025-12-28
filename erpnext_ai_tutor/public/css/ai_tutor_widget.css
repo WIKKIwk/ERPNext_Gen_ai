@@ -51,6 +51,67 @@
 	display: none !important;
 }
 
+.erpnext-ai-tutor-fade-in {
+	animation: erpnextAiTutorFadeIn 180ms ease-out both;
+}
+
+.erpnext-ai-tutor-fade-out {
+	animation: erpnextAiTutorFadeOut 160ms ease-in both;
+	pointer-events: none;
+}
+
+@keyframes erpnextAiTutorFadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes erpnextAiTutorFadeOut {
+	from {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+}
+
+.erpnext-ai-tutor-swap-out {
+	animation: erpnextAiTutorSwapOut 140ms ease-in both;
+}
+
+.erpnext-ai-tutor-swap-in {
+	animation: erpnextAiTutorSwapIn 180ms ease-out both;
+}
+
+@keyframes erpnextAiTutorSwapOut {
+	from {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+
+@keyframes erpnextAiTutorSwapIn {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
 .erpnext-ai-tutor-header {
 	display: flex;
 	align-items: center;
@@ -443,17 +504,41 @@
 
 .erpnext-ai-tutor-send {
 	border: 1px solid var(--border-color);
-	border-radius: 12px;
-	padding: 8px 12px;
-	background: var(--primary, #2563eb);
+	border-radius: 999px;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	background: linear-gradient(135deg, var(--erpnext-ai-tutor-blue-1), var(--erpnext-ai-tutor-blue-2));
 	color: #fff;
 	cursor: pointer;
 	white-space: nowrap;
 	transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .erpnext-ai-tutor-send:hover {
 	filter: brightness(1.06);
+}
+
+.erpnext-ai-tutor-send svg {
+	width: 18px;
+	height: 18px;
+}
+
+.erpnext-ai-tutor-send.is-busy svg {
+	animation: erpnextAiTutorSendSpin 0.9s linear infinite;
+	transform-origin: 50% 50%;
+}
+
+@keyframes erpnextAiTutorSendSpin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .erpnext-ai-tutor-send:disabled {

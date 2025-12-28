@@ -250,7 +250,9 @@
 					<div class="erpnext-ai-tutor-footer">
 						<form class="erpnext-ai-tutor-form">
 							<textarea class="erpnext-ai-tutor-input" rows="1" placeholder="Savolingizni yozing..."></textarea>
-							<button class="erpnext-ai-tutor-send" type="submit">Yuborish</button>
+							<button class="erpnext-ai-tutor-send" type="submit" aria-label="Yuborish" title="Yuborish">
+								${frappe?.utils?.icon ? frappe.utils.icon("es-line-arrow-up-right", "md") : "➤"}
+							</button>
 						</form>
 					</div>
 				</div>
@@ -369,7 +371,7 @@
 			this.saveChatState();
 			if (opts.render) {
 				this.hideHistory();
-				this.renderActiveConversation();
+				this.animateBodySwap(() => this.renderActiveConversation());
 				this.open();
 			}
 		}
@@ -476,17 +478,55 @@
 			else this.hideHistory();
 		}
 
+		clearViewAnimations() {
+			if (this._viewTransitionTimer) {
+				clearTimeout(this._viewTransitionTimer);
+				this._viewTransitionTimer = null;
+			}
+			for (const el of [this.$body, this.$history, this.$footer]) {
+				if (!el) continue;
+				el.classList.remove("erpnext-ai-tutor-fade-in", "erpnext-ai-tutor-fade-out");
+			}
+		}
+
 		showHistory() {
+			this.clearViewAnimations();
 			this.renderHistoryList();
+			this.$body.classList.remove("erpnext-ai-tutor-hidden");
+			this.$footer.classList.remove("erpnext-ai-tutor-hidden");
 			this.$history.classList.remove("erpnext-ai-tutor-hidden");
-			this.$body.classList.add("erpnext-ai-tutor-hidden");
-			this.$footer.classList.add("erpnext-ai-tutor-hidden");
+
+			this.$history.classList.add("erpnext-ai-tutor-fade-in");
+			this.$body.classList.add("erpnext-ai-tutor-fade-out");
+			this.$footer.classList.add("erpnext-ai-tutor-fade-out");
+
+			this._viewTransitionTimer = setTimeout(() => {
+				this.$history.classList.remove("erpnext-ai-tutor-fade-in");
+				this.$body.classList.remove("erpnext-ai-tutor-fade-out");
+				this.$footer.classList.remove("erpnext-ai-tutor-fade-out");
+				this.$body.classList.add("erpnext-ai-tutor-hidden");
+				this.$footer.classList.add("erpnext-ai-tutor-hidden");
+				this._viewTransitionTimer = null;
+			}, 190);
 		}
 
 		hideHistory() {
-			this.$history.classList.add("erpnext-ai-tutor-hidden");
+			this.clearViewAnimations();
+			this.$history.classList.remove("erpnext-ai-tutor-hidden");
 			this.$body.classList.remove("erpnext-ai-tutor-hidden");
 			this.$footer.classList.remove("erpnext-ai-tutor-hidden");
+
+			this.$body.classList.add("erpnext-ai-tutor-fade-in");
+			this.$footer.classList.add("erpnext-ai-tutor-fade-in");
+			this.$history.classList.add("erpnext-ai-tutor-fade-out");
+
+			this._viewTransitionTimer = setTimeout(() => {
+				this.$history.classList.add("erpnext-ai-tutor-hidden");
+				this.$history.classList.remove("erpnext-ai-tutor-fade-out");
+				this.$body.classList.remove("erpnext-ai-tutor-fade-in");
+				this.$footer.classList.remove("erpnext-ai-tutor-fade-in");
+				this._viewTransitionTimer = null;
+			}, 190);
 		}
 
 		renderHistoryList() {
@@ -819,8 +859,37 @@
 			if (!this.$send) return;
 			this.isBusy = Boolean(on);
 			this.$send.disabled = Boolean(on);
-			if (on) this.$send.textContent = "…";
-			else this.$send.textContent = "Yuborish";
+			this.$send.classList.toggle("is-busy", Boolean(on));
+		}
+
+		animateBodySwap(renderFn) {
+			if (!this.$body || typeof renderFn !== "function") {
+				if (typeof renderFn === "function") renderFn();
+				return;
+			}
+
+			if (this._swapTimer) {
+				clearTimeout(this._swapTimer);
+				this._swapTimer = null;
+			}
+			if (this._swapTimer2) {
+				clearTimeout(this._swapTimer2);
+				this._swapTimer2 = null;
+			}
+
+			this.$body.classList.remove("erpnext-ai-tutor-swap-in");
+			this.$body.classList.add("erpnext-ai-tutor-swap-out");
+
+			this._swapTimer = setTimeout(() => {
+				this.$body.classList.remove("erpnext-ai-tutor-swap-out");
+				renderFn();
+				this.$body.classList.add("erpnext-ai-tutor-swap-in");
+				this._swapTimer2 = setTimeout(() => {
+					this.$body.classList.remove("erpnext-ai-tutor-swap-in");
+					this._swapTimer2 = null;
+				}, 220);
+				this._swapTimer = null;
+			}, 150);
 		}
 
 		async autoHelp(ev) {
