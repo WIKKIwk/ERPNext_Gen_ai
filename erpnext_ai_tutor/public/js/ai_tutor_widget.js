@@ -390,14 +390,15 @@
 			for (const m of messages) {
 				if (!m || !m.role) continue;
 				this.history.push({ role: m.role, content: m.content });
-				this.appendToDOM(m.role, m.content, m.ts);
+				this.appendToDOM(m.role, m.content, m.ts, { animate: false });
 			}
 			this.$body.scrollTop = this.$body.scrollHeight;
 		}
 
-		appendToDOM(role, content, ts) {
+		appendToDOM(role, content, ts, opts = { animate: true }) {
 			const wrap = document.createElement("div");
 			wrap.className = `erpnext-ai-tutor-message ${role}`;
+			if (opts?.animate) wrap.classList.add("is-new");
 
 			const bubble = document.createElement("div");
 			bubble.className = "erpnext-ai-tutor-bubble";

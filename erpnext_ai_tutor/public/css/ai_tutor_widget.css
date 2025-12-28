@@ -4,6 +4,10 @@
 	bottom: 18px;
 	z-index: 1045; /* above modals backdrop (1040) */
 	font-family: var(--font-stack, inherit);
+	--erpnext-ai-tutor-blue-1: #2563eb;
+	--erpnext-ai-tutor-blue-2: #3b82f6;
+	--erpnext-ai-tutor-neutral: rgba(255, 255, 255, 0.06);
+	--erpnext-ai-tutor-neutral-hover: rgba(255, 255, 255, 0.085);
 }
 
 .erpnext-ai-tutor-fab {
@@ -19,10 +23,13 @@
 	justify-content: center;
 	padding: 0;
 	cursor: pointer;
+	transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
 }
 
 .erpnext-ai-tutor-fab:hover {
 	filter: brightness(1.05);
+	transform: translateY(-1px);
+	box-shadow: 0 16px 42px rgba(0, 0, 0, 0.42);
 }
 
 .erpnext-ai-tutor-drawer {
@@ -69,7 +76,7 @@
 
 .erpnext-ai-tutor-close {
 	border: 1px solid var(--border-color);
-	background: transparent;
+	background: rgba(255, 255, 255, 0.02);
 	color: var(--text-color);
 	border-radius: 10px;
 	width: 34px;
@@ -78,11 +85,12 @@
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
+	transition: transform 120ms ease, filter 120ms ease, background 120ms ease;
 }
 
 .erpnext-ai-tutor-icon-btn {
 	border: 1px solid var(--border-color);
-	background: transparent;
+	background: rgba(255, 255, 255, 0.02);
 	color: var(--text-color);
 	border-radius: 10px;
 	width: 34px;
@@ -92,11 +100,13 @@
 	justify-content: center;
 	cursor: pointer;
 	padding: 0;
+	transition: transform 120ms ease, filter 120ms ease, background 120ms ease;
 }
 
 .erpnext-ai-tutor-close:hover,
 .erpnext-ai-tutor-icon-btn:hover {
 	filter: brightness(1.08);
+	background: rgba(255, 255, 255, 0.035);
 }
 
 .erpnext-ai-tutor-close:active,
@@ -152,10 +162,12 @@
 	border-radius: 12px;
 	padding: 10px 10px;
 	cursor: pointer;
+	transition: filter 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 
 .erpnext-ai-tutor-history-item:hover {
 	filter: brightness(1.06);
+	background: rgba(255, 255, 255, 0.03);
 }
 
 .erpnext-ai-tutor-history-item.active {
@@ -233,12 +245,13 @@
 .erpnext-ai-tutor-bubble {
 	max-width: 85%;
 	border: 1px solid var(--border-color);
-	border-radius: 14px;
+	border-radius: 18px;
 	padding: 10px 10px;
 	line-height: 1.35;
 	overflow: visible;
 	max-height: none;
 	text-align: left;
+	box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
 }
 
 .erpnext-ai-tutor-text {
@@ -253,11 +266,52 @@
 }
 
 .erpnext-ai-tutor-message.user .erpnext-ai-tutor-bubble {
-	background: rgba(124, 58, 237, 0.12);
+	background: var(--erpnext-ai-tutor-neutral);
 }
 
 .erpnext-ai-tutor-message.assistant .erpnext-ai-tutor-bubble {
-	background: rgba(59, 130, 246, 0.08);
+	background: linear-gradient(135deg, var(--erpnext-ai-tutor-blue-1), var(--erpnext-ai-tutor-blue-2));
+	border-color: rgba(37, 99, 235, 0.35);
+	color: rgba(255, 255, 255, 0.97);
+}
+
+.erpnext-ai-tutor-message.assistant .erpnext-ai-tutor-meta {
+	opacity: 0.85;
+}
+
+.erpnext-ai-tutor-message.assistant .erpnext-ai-tutor-typing-dot {
+	background: rgba(255, 255, 255, 0.85);
+}
+
+/* Message enter animations (Signal-like, subtle) */
+.erpnext-ai-tutor-message.is-new.user .erpnext-ai-tutor-bubble {
+	animation: erpnextAiTutorInRight 190ms ease-out both;
+}
+
+.erpnext-ai-tutor-message.is-new.assistant .erpnext-ai-tutor-bubble {
+	animation: erpnextAiTutorInLeft 190ms ease-out both;
+}
+
+@keyframes erpnextAiTutorInRight {
+	from {
+		opacity: 0;
+		transform: translateX(10px) scale(0.985);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0) scale(1);
+	}
+}
+
+@keyframes erpnextAiTutorInLeft {
+	from {
+		opacity: 0;
+		transform: translateX(-10px) scale(0.985);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0) scale(1);
+	}
 }
 
 .erpnext-ai-tutor-meta {
@@ -288,6 +342,13 @@
 	padding: 8px 10px;
 	background: var(--card-bg);
 	color: var(--text-color);
+	transition: border-color 120ms ease, background 120ms ease;
+}
+
+.erpnext-ai-tutor-input:focus {
+	outline: none;
+	border-color: rgba(37, 99, 235, 0.55);
+	background: rgba(255, 255, 255, 0.02);
 }
 
 .erpnext-ai-tutor-send {
@@ -298,6 +359,11 @@
 	color: #fff;
 	cursor: pointer;
 	white-space: nowrap;
+	transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+}
+
+.erpnext-ai-tutor-send:hover {
+	filter: brightness(1.06);
 }
 
 .erpnext-ai-tutor-send:disabled {
@@ -324,4 +390,18 @@
 .erpnext-ai-tutor-pill.orange {
 	border-color: rgba(245, 158, 11, 0.55);
 	background: rgba(245, 158, 11, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.erpnext-ai-tutor-message.is-new.user .erpnext-ai-tutor-bubble,
+	.erpnext-ai-tutor-message.is-new.assistant .erpnext-ai-tutor-bubble,
+	.erpnext-ai-tutor-fab,
+	.erpnext-ai-tutor-close,
+	.erpnext-ai-tutor-icon-btn,
+	.erpnext-ai-tutor-history-item,
+	.erpnext-ai-tutor-input,
+	.erpnext-ai-tutor-send {
+		animation: none !important;
+		transition: none !important;
+	}
 }
