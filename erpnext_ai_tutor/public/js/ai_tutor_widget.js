@@ -136,6 +136,8 @@
 		const snapshot = {
 			route: typeof frappe.get_route === "function" ? frappe.get_route() : [],
 			route_str: typeof frappe.get_route_str === "function" ? frappe.get_route_str() : "",
+			page_title: document.title || "",
+			hash: window.location.hash || "",
 			url: window.location.href,
 			user: frappe.session && frappe.session.user,
 			event: lastEvent || null,
@@ -172,6 +174,7 @@
 			this.$historyBtn = null;
 			this.$newChatBtn = null;
 			this.$typing = null;
+			this.activeField = null;
 		}
 
 		async init() {
@@ -179,6 +182,7 @@
 			this.loadChatState();
 			await this.loadConfig();
 			this.installHooks();
+			this.installContextCapture();
 			this.ensureConversation();
 			this.renderActiveConversation();
 		}
@@ -550,6 +554,75 @@
 			});
 		}
 
+		installContextCapture() {
+			if (this._contextCaptureInstalled) return;
+			this._contextCaptureInstalled = true;
+
+			const handler = (ev) => {
+				try {
+					this.captureActiveField(ev?.target);
+				} catch {
+					// ignore
+				}
+			};
+
+			document.addEventListener("focusin", handler, true);
+			document.addEventListener("input", handler, true);
+		}
+
+		captureActiveField(target) {
+			if (!target || typeof target.closest !== "function") return;
+			if (target.closest(".erpnext-ai-tutor-drawer")) return;
+
+			const tag = String(target.tagName || "").toLowerCase();
+			const isInputLike =
+				tag === "input" ||
+				tag === "textarea" ||
+				tag === "select" ||
+				Boolean(target.isContentEditable);
+			if (!isInputLike) return;
+
+			const wrapper = target.closest("[data-fieldname]");
+			const fieldname = wrapper?.dataset?.fieldname || "";
+			let label = "";
+
+			try {
+				const df = window.cur_frm?.fields_dict?.[fieldname]?.df;
+				label = df?.label || "";
+			} catch {
+				// ignore
+			}
+
+			if (!label && wrapper) {
+				const labelEl = wrapper.querySelector("label");
+				label = (labelEl?.textContent || "").trim();
+			}
+
+			let value = "";
+			try {
+				if (fieldname && window.cur_frm?.doc && Object.prototype.hasOwnProperty.call(window.cur_frm.doc, fieldname)) {
+					const v = window.cur_frm.doc[fieldname];
+					if (typeof v === "string" || typeof v === "number") value = String(v);
+				} else if (typeof target.value === "string") {
+					value = target.value;
+				}
+			} catch {
+				// ignore
+			}
+
+			const safeFieldname = String(fieldname || "");
+			const safeLabel = String(label || "");
+			const isSensitive = redactKey(safeFieldname) || redactKey(safeLabel);
+			const safeValue = isSensitive ? "[redacted]" : clip(value, 140);
+
+			this.activeField = {
+				fieldname: safeFieldname,
+				label: safeLabel,
+				value: safeValue,
+				at: Date.now(),
+			};
+		}
+
 		onMsgprint(args) {
 			let message = "";
 			let title = "";
@@ -687,6 +760,7 @@
 			this.showTyping();
 			try {
 				const ctx = getContextSnapshot(this.config, this.lastEvent);
+				if (this.activeField) ctx.active_field = sanitize(this.activeField);
 				const history = this.history.slice(-20);
 				// Remove the message we just appended (current user message) to avoid duplication.
 				if (history.length && history[history.length - 1]?.role === "user") {
