@@ -25,8 +25,8 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/erpnext_ai_tutor/css/erpnext_ai_tutor.css"
-# app_include_js = "/assets/erpnext_ai_tutor/js/erpnext_ai_tutor.js"
+app_include_css = "/assets/erpnext_ai_tutor/css/ai_tutor_widget.css?v=2"
+app_include_js = "/assets/erpnext_ai_tutor/js/ai_tutor_widget.js?v=2"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/erpnext_ai_tutor/css/erpnext_ai_tutor.css"
@@ -246,4 +246,3 @@ app_license = "mit"
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

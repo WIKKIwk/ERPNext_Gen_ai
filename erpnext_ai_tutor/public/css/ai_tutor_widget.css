@@ -1,0 +1,193 @@
+.erpnext-ai-tutor-root {
+	position: fixed;
+	right: 18px;
+	bottom: 18px;
+	z-index: 1045; /* above modals backdrop (1040) */
+	font-family: var(--font-stack, inherit);
+}
+
+.erpnext-ai-tutor-fab {
+	width: 44px;
+	height: 44px;
+	border-radius: 999px;
+	border: 1px solid var(--border-color);
+	background: var(--card-bg);
+	color: var(--text-color);
+	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	cursor: pointer;
+}
+
+.erpnext-ai-tutor-fab:hover {
+	filter: brightness(1.05);
+}
+
+.erpnext-ai-tutor-drawer {
+	position: fixed;
+	right: 18px;
+	bottom: 72px;
+	width: min(420px, calc(100vw - 36px));
+	height: min(560px, calc(100vh - 120px));
+	border: 1px solid var(--border-color);
+	background: var(--card-bg);
+	border-radius: 14px;
+	box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.erpnext-ai-tutor-hidden {
+	display: none !important;
+}
+
+.erpnext-ai-tutor-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 12px;
+	border-bottom: 1px solid var(--border-color);
+	background: var(--bg-color);
+}
+
+.erpnext-ai-tutor-title {
+	font-weight: 700;
+}
+
+.erpnext-ai-tutor-subtitle {
+	color: var(--text-muted, rgba(255, 255, 255, 0.6));
+	font-size: 12px;
+	line-height: 1.2;
+}
+
+.erpnext-ai-tutor-header-spacer {
+	flex: 1;
+}
+
+.erpnext-ai-tutor-close {
+	border: 1px solid var(--border-color);
+	background: transparent;
+	color: var(--text-color);
+	border-radius: 10px;
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.erpnext-ai-tutor-body {
+	padding: 12px;
+	overflow: auto;
+	flex: 1;
+	background: var(--card-bg);
+}
+
+.erpnext-ai-tutor-message {
+	display: flex;
+	margin: 10px 0;
+}
+
+.erpnext-ai-tutor-message.user {
+	justify-content: flex-end;
+}
+
+.erpnext-ai-tutor-bubble {
+	max-width: 85%;
+	border: 1px solid var(--border-color);
+	border-radius: 14px;
+	padding: 10px 10px;
+	line-height: 1.35;
+	overflow: visible;
+	max-height: none;
+	text-align: left;
+}
+
+.erpnext-ai-tutor-text {
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow: visible;
+	max-height: none;
+	display: block;
+	/* Defensive: prevent any global 2-line clamping rules from affecting our messages */
+	-webkit-line-clamp: unset;
+	-webkit-box-orient: unset;
+}
+
+.erpnext-ai-tutor-message.user .erpnext-ai-tutor-bubble {
+	background: rgba(124, 58, 237, 0.12);
+}
+
+.erpnext-ai-tutor-message.assistant .erpnext-ai-tutor-bubble {
+	background: rgba(59, 130, 246, 0.08);
+}
+
+.erpnext-ai-tutor-meta {
+	margin-top: 6px;
+	font-size: 11px;
+	opacity: 0.7;
+}
+
+.erpnext-ai-tutor-footer {
+	border-top: 1px solid var(--border-color);
+	padding: 10px;
+	background: var(--bg-color);
+}
+
+.erpnext-ai-tutor-form {
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
+}
+
+.erpnext-ai-tutor-input {
+	flex: 1;
+	min-height: 38px;
+	max-height: 130px;
+	resize: none;
+	border: 1px solid var(--border-color);
+	border-radius: 12px;
+	padding: 8px 10px;
+	background: var(--card-bg);
+	color: var(--text-color);
+}
+
+.erpnext-ai-tutor-send {
+	border: 1px solid var(--border-color);
+	border-radius: 12px;
+	padding: 8px 12px;
+	background: var(--primary, #2563eb);
+	color: #fff;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.erpnext-ai-tutor-send:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.erpnext-ai-tutor-pill {
+	display: inline-flex;
+	gap: 6px;
+	align-items: center;
+	padding: 3px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--border-color);
+	font-size: 11px;
+	opacity: 0.85;
+}
+
+.erpnext-ai-tutor-pill.red {
+	border-color: rgba(239, 68, 68, 0.55);
+	background: rgba(239, 68, 68, 0.08);
+}
+
+.erpnext-ai-tutor-pill.orange {
+	border-color: rgba(245, 158, 11, 0.55);
+	background: rgba(245, 158, 11, 0.08);
+}

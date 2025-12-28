@@ -1,0 +1,114 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "creation": "2025-12-27 00:00:00.000000",
+ "default_print_format": "",
+ "disable_copy": 0,
+ "docstatus": 0,
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "has_web_view": 0,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "inline": 0,
+ "is_tree": 0,
+ "issingle": 1,
+ "links": [],
+ "max_attachments": 0,
+ "modified": "2025-12-27 00:00:00.000000",
+ "module": "ERPNext AI Tutor",
+ "name": "AI Tutor Settings",
+ "number_of_columns": 0,
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 0,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 0,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "show_name_in_global_search": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "field_order": [
+  "enabled",
+  "auto_open_on_error",
+  "auto_open_on_warning",
+  "include_form_context",
+  "include_doc_values",
+  "max_context_kb",
+  "language",
+  "system_prompt"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enable AI Tutor"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_open_on_error",
+   "fieldtype": "Check",
+   "label": "Auto-open on Error"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_open_on_warning",
+   "fieldtype": "Check",
+   "label": "Auto-open on Warning"
+  },
+  {
+   "default": "1",
+   "fieldname": "include_form_context",
+   "fieldtype": "Check",
+   "label": "Include Page Context",
+   "description": "Sends route/page info to the tutor."
+  },
+  {
+   "default": "1",
+   "fieldname": "include_doc_values",
+   "fieldtype": "Check",
+   "label": "Include Form Values",
+   "description": "Sends current form values (sanitized) when available."
+  },
+  {
+   "default": "24",
+   "fieldname": "max_context_kb",
+   "fieldtype": "Int",
+   "label": "Max Context Size (KB)",
+   "description": "Limits data sent to AI for safety and speed."
+  },
+  {
+   "default": "uz",
+   "fieldname": "language",
+   "fieldtype": "Select",
+   "label": "Language",
+   "options": "uz\nru\nen"
+  },
+  {
+   "fieldname": "system_prompt",
+   "fieldtype": "Code",
+   "label": "System Prompt",
+   "options": "Text",
+   "description": "Default tutor instructions (advanced)."
+  }
+ ]
+}
+

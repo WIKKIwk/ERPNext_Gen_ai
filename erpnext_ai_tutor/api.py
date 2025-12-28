@@ -1,0 +1,369 @@
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List
+
+import frappe
+
+from erpnext_ai_tutor.erpnext_ai_tutor.doctype.ai_tutor_settings.ai_tutor_settings import (
+	AITutorSettings,
+	truncate_json,
+)
+
+
+SENSITIVE_KEY_PARTS = (
+	"password",
+	"passwd",
+	"pwd",
+	"token",
+	"secret",
+	"api_key",
+	"apikey",
+	"authorization",
+	"auth",
+	"private_key",
+	"signature",
+)
+
+
+def _redact_key(key: str) -> bool:
+	lower = (key or "").lower()
+	return any(part in lower for part in SENSITIVE_KEY_PARTS)
+
+
+def sanitize(value: Any, *, depth: int = 0, max_depth: int = 6) -> Any:
+	if depth > max_depth:
+		return "[truncated]"
+
+	if isinstance(value, dict):
+		out: Dict[str, Any] = {}
+		for k, v in value.items():
+			key = str(k)
+			if _redact_key(key):
+				out[key] = "[redacted]"
+			else:
+				out[key] = sanitize(v, depth=depth + 1, max_depth=max_depth)
+		return out
+
+	if isinstance(value, list):
+		# cap list size
+		items = value[:200]
+		return [sanitize(v, depth=depth + 1, max_depth=max_depth) for v in items]
+
+	if isinstance(value, str):
+		if len(value) > 4000:
+			return value[:4000] + "…"
+		return value
+
+	return value
+
+
+def _get_ai_provider_config() -> Dict[str, str]:
+	"""Reuse ERPNext AI's provider/key settings when available."""
+	try:
+		from erpnext_ai.erpnext_ai.doctype.ai_settings.ai_settings import AISettings
+
+		doc = AISettings.get_settings()
+		api_key = getattr(doc, "_resolved_api_key", None)
+		if not api_key:
+			raise ValueError("Missing API key")
+		return {
+			"provider": doc.api_provider,
+			"model": doc.openai_model,
+			"api_key": api_key,
+		}
+	except Exception as exc:
+		frappe.throw(
+			"AI sozlamalari topilmadi yoki API key yo'q. "
+			"Desk → Chatting with AI → AI Settings bo'limida OpenAI/Gemini API key'ni kiriting."
+		)
+		raise exc
+
+
+def _call_llm(*, messages: List[dict]) -> str:
+	cfg = _get_ai_provider_config()
+	try:
+		from erpnext_ai.erpnext_ai.services.llm_client import generate_completion
+	except Exception as exc:
+		frappe.throw("ERPNext AI komponentlari topilmadi. Iltimos `erpnext_ai` app o'rnatilganini tekshiring.")
+		raise exc
+
+	def call_with(max_tokens: int) -> str:
+		return generate_completion(
+			provider=cfg["provider"],
+			api_key=cfg["api_key"],
+			model=cfg["model"],
+			messages=messages,
+			temperature=0.2,
+			max_completion_tokens=max_tokens,
+			timeout=60,
+		)
+
+	# Test: higher output cap. Some providers/models may reject large values;
+	# fall back to a safer cap instead of failing the whole request.
+	try:
+		return call_with(8192)
+	except Exception as exc:
+		msg = str(exc).lower()
+		token_related = (
+			"maxoutputtokens",
+			"max_completion_tokens",
+			"max tokens",
+			"output tokens",
+			"token limit",
+			"too large",
+			"exceeds",
+			"invalid argument",
+		)
+		if any(p in msg for p in token_related):
+			return call_with(4096)
+		raise
+
+
+_AUTO_HELP_PREFIX_RE = re.compile(r"^\\s*ERP\\s+tizimida\\s+xatolik/ogohlantirish\\s+chiqdi\\.", re.IGNORECASE)
+
+
+def _is_auto_help(user_message: str, ctx: Any) -> bool:
+	if _AUTO_HELP_PREFIX_RE.match(user_message or ""):
+		return True
+
+	if isinstance(ctx, dict):
+		event = ctx.get("event")
+		if isinstance(event, dict):
+			severity = str(event.get("severity") or "").strip().lower()
+			if severity in {"error", "warning"}:
+				return True
+
+	return False
+
+
+def _coerce_text(value: Any) -> str:
+	if value is None:
+		return ""
+	if isinstance(value, str):
+		return value
+	return str(value)
+
+
+def _context_summary(ctx: Dict[str, Any]) -> str:
+	lines: List[str] = []
+
+	route_str = _coerce_text(ctx.get("route_str")).strip()
+	if route_str:
+		lines.append(f"Sahifa: {route_str}")
+	else:
+		route = ctx.get("route")
+		if isinstance(route, list) and route:
+			lines.append("Sahifa: " + "/".join(_coerce_text(part) for part in route))
+
+	form = ctx.get("form")
+	if isinstance(form, dict):
+		doctype = _coerce_text(form.get("doctype")).strip()
+		docname = _coerce_text(form.get("docname")).strip()
+		if doctype:
+			label = f"Forma: {doctype}"
+			if docname:
+				label += f" ({docname})"
+			lines.append(label)
+
+		if "is_new" in form:
+			lines.append(f"Yangi hujjat: {bool(form.get('is_new'))}")
+		if "is_dirty" in form:
+			lines.append(f"O'zgarish bor: {bool(form.get('is_dirty'))}")
+
+		missing = form.get("missing_required")
+		if isinstance(missing, list) and missing:
+			missing_labels: List[str] = []
+			for item in missing[:30]:
+				if not isinstance(item, dict):
+					continue
+				label = _coerce_text(item.get("label") or item.get("fieldname")).strip()
+				if label:
+					missing_labels.append(label)
+			if missing_labels:
+				lines.append("Majburiy maydonlar bo'sh: " + ", ".join(missing_labels))
+
+	event = ctx.get("event")
+	if isinstance(event, dict):
+		severity = _coerce_text(event.get("severity")).strip()
+		title = _coerce_text(event.get("title")).strip()
+		message = _coerce_text(event.get("message")).strip()
+		if severity or title:
+			parts = [p for p in (severity, title) if p]
+			if parts:
+				lines.append("Oxirgi hodisa: " + " | ".join(parts))
+		if message:
+			lines.append("Xabar: " + message)
+
+	return "\n".join(lines).strip()
+
+
+def _shrink_doc(doc: Dict[str, Any], missing_required: Any | None = None) -> Dict[str, Any]:
+	required_fields: List[str] = []
+	if isinstance(missing_required, list):
+		for item in missing_required[:50]:
+			if isinstance(item, dict) and item.get("fieldname"):
+				required_fields.append(str(item["fieldname"]))
+
+	out: Dict[str, Any] = {}
+	for key in required_fields:
+		if key in doc:
+			out[key] = doc.get(key)
+
+	for key, value in doc.items():
+		if key in out:
+			continue
+		if key.startswith("_") or key.startswith("__"):
+			continue
+		if value is None:
+			continue
+		if isinstance(value, (list, dict)):
+			continue
+		if isinstance(value, str) and len(value) > 320:
+			continue
+		out[key] = value
+		if len(out) >= 60:
+			break
+
+	return out
+
+
+def _looks_truncated(reply: str) -> bool:
+	text = (reply or "").strip()
+	if not text:
+		return True
+	if len(text) < 120:
+		return True
+	# Avoid unnecessary "continue" calls on already long replies.
+	if len(text) > 1800:
+		return False
+	last = text[-1]
+	if last in ".!?…":
+		return False
+	# Ends with alphanumeric or punctuation that often implies continuation.
+	return last.isalnum() or last in {":", ",", "-", "—"}
+
+
+@frappe.whitelist()
+def get_tutor_config() -> Dict[str, Any]:
+	"""Client bootstrap config (safe; no secrets)."""
+	doc = AITutorSettings.get_settings()
+	public_cfg = AITutorSettings.safe_public_config()
+
+	ai_ok = True
+	try:
+		_get_ai_provider_config()
+	except Exception:
+		ai_ok = False
+
+	return {
+		"config": public_cfg,
+		"ai_ready": ai_ok,
+		"language": public_cfg.get("language") or getattr(doc, "language", "uz") or "uz",
+	}
+
+
+@frappe.whitelist()
+def chat(message: str, context: Any | None = None, history: Any | None = None) -> Dict[str, Any]:
+	"""Chat endpoint used by the Desk widget."""
+	cfg = AITutorSettings.get_config()
+	if not cfg.enabled:
+		return {"ok": False, "reply": "AI Tutor o'chirilgan (AI Tutor Settings)."}
+
+	user_message = (message or "").strip()
+	if not user_message:
+		return {"ok": False, "reply": "Xabar bo'sh bo'lmasin."}
+
+	ctx = sanitize(context or {})
+	is_auto = _is_auto_help(user_message, ctx)
+
+	messages: List[dict] = [{"role": "system", "content": cfg.system_prompt.strip()}]
+	if cfg.language == "uz":
+		messages.append(
+			{"role": "system", "content": "Always reply in Uzbek (uz) unless user requests another language."}
+		)
+	elif cfg.language == "ru":
+		messages.append(
+			{"role": "system", "content": "Always reply in Russian (ru) unless user requests another language."}
+		)
+	else:
+		messages.append(
+			{"role": "system", "content": "Always reply in English unless user requests another language."}
+		)
+
+	if cfg.include_form_context:
+		# Prefer a compact summary to avoid token exhaustion (helps prevent cut-off answers).
+		if isinstance(ctx, dict):
+			summary = _context_summary(ctx)
+			if summary:
+				messages.append(
+					{
+						"role": "system",
+						"content": "Current ERPNext page context (summary, sanitized):\n" + summary,
+					}
+				)
+
+		# Only include potentially large JSON on manual chats.
+		if not is_auto and isinstance(ctx, dict):
+			ctx_for_json = dict(ctx)
+			form = ctx_for_json.get("form")
+			if isinstance(form, dict):
+				form2 = dict(form)
+				doc = form2.get("doc")
+				if isinstance(doc, dict):
+					form2["doc"] = _shrink_doc(doc, form2.get("missing_required"))
+				ctx_for_json["form"] = form2
+
+			context_json = truncate_json(ctx_for_json, cfg.max_context_kb)
+			messages.append(
+				{
+					"role": "system",
+					"content": "Context JSON (sanitized, may be truncated):\n" + context_json,
+				}
+			)
+
+	# Optional conversation history (client-supplied)
+	try:
+		if isinstance(history, str):
+			# some clients might pass JSON as string
+			import json
+
+			history = json.loads(history)
+	except Exception:
+		history = None
+
+	if isinstance(history, list):
+		for item in history[-20:]:
+			if not isinstance(item, dict):
+				continue
+			role = str(item.get("role") or "").strip()
+			content = str(item.get("content") or "").strip()
+			if role not in {"user", "assistant"}:
+				continue
+			if not content:
+				continue
+			messages.append({"role": role, "content": content[:2000]})
+
+	messages.append({"role": "user", "content": user_message})
+
+	reply = _call_llm(messages=messages)
+
+	# Best-effort: if response looks cut off, ask the model to continue once.
+	if reply and _looks_truncated(reply):
+		continue_messages: List[dict] = [
+			messages[0],
+			{
+				"role": "system",
+				"content": "If you stopped due to length, continue exactly from where you stopped. Do not repeat.",
+			},
+			{"role": "assistant", "content": reply},
+			{"role": "user", "content": "Davom ettiring va javobni to'liq yakunlang."},
+		]
+		try:
+			reply2 = _call_llm(messages=continue_messages)
+			if reply2:
+				reply = (reply.rstrip() + "\n\n" + reply2.lstrip()).strip()
+		except Exception:
+			pass
+
+	return {"ok": True, "reply": reply or ""}

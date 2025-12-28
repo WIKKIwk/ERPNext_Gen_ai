@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import frappe
+from frappe.model.document import Document
+
+
+@dataclass(frozen=True)
+class TutorConfig:
+	enabled: bool
+	auto_open_on_error: bool
+	auto_open_on_warning: bool
+	include_form_context: bool
+	include_doc_values: bool
+	max_context_kb: int
+	language: str
+	system_prompt: str
+
+
+DEFAULT_SYSTEM_PROMPT = """You are an ERPNext tutor assistant.
+
+Goal:
+- Help the user understand what is happening on the current ERPNext page.
+- When an error/warning happens, explain it clearly and propose safe, step-by-step fixes.
+
+Rules:
+- Respond in Uzbek by default unless the user asks another language.
+- Always write a complete answer (never stop mid-sentence).
+- Follow this structure:
+  1) Nima bo'ldi
+  2) Nega bo'ldi
+  3) Qanday tuzatamiz (kamida 5 ta aniq qadam)
+  4) Tekshiruv ro'yxati (qisqa)
+- Be practical and safe: focus on what the user can do on the current page.
+- Never ask for passwords, API keys, tokens, or secrets.
+- If a fix requires a permission the user might not have, say so.
+- Do not fabricate field names/values; if missing, ask 1 clarifying question.
+"""
+
+
+def _coerce_bool(value: Any) -> bool:
+	try:
+		return bool(int(value))
+	except Exception:
+		return bool(value)
+
+
+def _coerce_int(value: Any, default: int) -> int:
+	try:
+		return int(value)
+	except Exception:
+		return default
+
+
+class AITutorSettings(Document):
+	def validate(self) -> None:
+		self.max_context_kb = _coerce_int(getattr(self, "max_context_kb", None), 24)
+		if self.max_context_kb < 4:
+			self.max_context_kb = 4
+		if self.max_context_kb > 256:
+			self.max_context_kb = 256
+
+		if not getattr(self, "language", None):
+			self.language = "uz"
+
+		if not getattr(self, "system_prompt", None):
+			self.system_prompt = DEFAULT_SYSTEM_PROMPT
+
+	@staticmethod
+	def get_settings() -> "AITutorSettings":
+		doc = frappe.get_single("AI Tutor Settings")
+		doc.max_context_kb = _coerce_int(getattr(doc, "max_context_kb", None), 24)
+		if not getattr(doc, "language", None):
+			doc.language = "uz"
+		if not getattr(doc, "system_prompt", None):
+			doc.system_prompt = DEFAULT_SYSTEM_PROMPT
+		return doc
+
+	@staticmethod
+	def get_config() -> TutorConfig:
+		doc = AITutorSettings.get_settings()
+		return TutorConfig(
+			enabled=_coerce_bool(getattr(doc, "enabled", 1)),
+			auto_open_on_error=_coerce_bool(getattr(doc, "auto_open_on_error", 1)),
+			auto_open_on_warning=_coerce_bool(getattr(doc, "auto_open_on_warning", 1)),
+			include_form_context=_coerce_bool(getattr(doc, "include_form_context", 1)),
+			include_doc_values=_coerce_bool(getattr(doc, "include_doc_values", 1)),
+			max_context_kb=_coerce_int(getattr(doc, "max_context_kb", None), 24),
+			language=str(getattr(doc, "language", "uz") or "uz"),
+			system_prompt=str(getattr(doc, "system_prompt", DEFAULT_SYSTEM_PROMPT) or DEFAULT_SYSTEM_PROMPT),
+		)
+
+	@staticmethod
+	def safe_public_config() -> Dict[str, Any]:
+		"""Safe subset for clients (no secrets)."""
+		cfg = AITutorSettings.get_config()
+		return {
+			"enabled": cfg.enabled,
+			"auto_open_on_error": cfg.auto_open_on_error,
+			"auto_open_on_warning": cfg.auto_open_on_warning,
+			"include_form_context": cfg.include_form_context,
+			"include_doc_values": cfg.include_doc_values,
+			"max_context_kb": cfg.max_context_kb,
+			"language": cfg.language,
+		}
+
+
+def truncate_json(obj: Any, max_kb: int) -> str:
+	"""Serialize and cap payload size. Returns JSON string."""
+	limit = max(1, int(max_kb)) * 1024
+	try:
+		raw = json.dumps(obj, ensure_ascii=False, default=str)
+	except Exception:
+		raw = json.dumps({"error": "context_serialization_failed"}, ensure_ascii=False)
+	if len(raw.encode("utf-8")) <= limit:
+		return raw
+	# Rough trim: progressively remove large keys
+	if isinstance(obj, dict):
+		trimmed = dict(obj)
+		for key in ("doc", "doc_values", "meta", "traceback", "server_messages"):
+			if key in trimmed:
+				trimmed[key] = "[truncated]"
+				try:
+					raw2 = json.dumps(trimmed, ensure_ascii=False, default=str)
+					if len(raw2.encode("utf-8")) <= limit:
+						return raw2
+					raw = raw2
+				except Exception:
+					continue
+	# Final: hard truncate
+	data = raw.encode("utf-8")[:limit]
+	try:
+		return data.decode("utf-8", errors="ignore")
+	except Exception:
+		return "{\"error\":\"context_too_large\"}"
