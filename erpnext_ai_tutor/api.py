@@ -352,6 +352,15 @@ def _looks_truncated(reply: str) -> bool:
 	# Ends with alphanumeric or punctuation that often implies continuation.
 	return last.isalnum() or last in {":", ",", "-", "—"}
 
+def _parse_json_arg(value: Any) -> Any:
+	"""Frappe JS often sends nested args as JSON strings; normalize them back."""
+	if isinstance(value, str):
+		try:
+			return frappe.parse_json(value)
+		except Exception:
+			return value
+	return value
+
 
 @frappe.whitelist()
 def get_tutor_config() -> Dict[str, Any]:
@@ -383,7 +392,10 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	if not user_message:
 		return {"ok": False, "reply": "Xabar bo'sh bo'lmasin."}
 
-	ctx = sanitize(context or {})
+	raw_ctx = _parse_json_arg(context or {})
+	if not isinstance(raw_ctx, dict):
+		raw_ctx = {}
+	ctx = sanitize(raw_ctx)
 	is_auto = _is_auto_help(user_message)
 	if _is_greeting_only(user_message):
 		return {"ok": True, "reply": "Salom! Qanday yordam bera olaman?"}
@@ -478,13 +490,8 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 			)
 
 	# Optional conversation history (client-supplied)
-	try:
-		if isinstance(history, str):
-			# some clients might pass JSON as string
-			import json
-
-			history = json.loads(history)
-	except Exception:
+	history = _parse_json_arg(history)
+	if history is not None and not isinstance(history, list):
 		history = None
 
 	if isinstance(history, list):
