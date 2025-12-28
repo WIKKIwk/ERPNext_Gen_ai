@@ -136,7 +136,7 @@ _GREETING_ONLY_RE = re.compile(
 )
 
 _WHERE_AM_I_RE = re.compile(
-	r"\b(qayerda(man)?|hozir\s+qayer|qaysi\s+(sahifa|qism|bo['’]lim|joy|path)|where\s+am\s+i)\b",
+	r"(?:^|\b)(qayerda(man)?|hozir\s+qayer|qaysi\s+(sahifa|qism|bo['’]lim|bo‘lim|joy|yo['’]l|yol|path\w*|route\w*|url\w*)|where\s+am\s+i)(?:\b|$)",
 	re.IGNORECASE,
 )
 
