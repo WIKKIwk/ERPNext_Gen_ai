@@ -195,6 +195,7 @@
 			this.lastAutoHelpAt = 0;
 			this.autoHelpDisabledUntil = 0;
 			this.autoHelpTimestamps = [];
+			this.suppressEventsUntil = 0;
 			this.$root = null;
 			this.$drawer = null;
 			this.$body = null;
@@ -737,6 +738,10 @@
 		}
 
 		async handleEvent(ev) {
+			const now = Date.now();
+			if ((ev?.source === "msgprint" || ev?.source === "alert") && now < (this.suppressEventsUntil || 0)) {
+				return;
+			}
 			this.lastEvent = { ...ev, at: Date.now() };
 			const autoOpen =
 				(ev.severity === "error" && this.config?.auto_open_on_error) ||
@@ -846,6 +851,7 @@
 			this.setBusy(true);
 			this.showTyping();
 			this.setMessageStatus(userEl, "sending");
+			this.suppressEventsUntil = Date.now() + 8000;
 			try {
 				const ctx = getContextSnapshot(this.config, this.lastEvent);
 				if (this.activeField) ctx.active_field = sanitize(this.activeField);
@@ -876,11 +882,12 @@
 				const isEmptyReply = String(e?.message || "") === "EMPTY_REPLY";
 				if (opts?.source === "auto") {
 					this.autoHelpDisabledUntil = Date.now() + AUTO_HELP_FAILURE_COOLDOWN_MS;
+					return;
 				}
 				this.append(
 					"assistant",
 					isEmptyReply
-						? "AI javobi bo'sh keldi. Iltimos bir marta sahifani yangilang (Ctrl+Shift+R) va qayta urinib ko'ring."
+						? "AI javob bermadi. Iltimos qayta urinib ko'ring."
 						: "AI bilan bog‘lanishda xatolik. AI Settings (OpenAI/Gemini API key) sozlanganini tekshiring."
 				);
 			} finally {
