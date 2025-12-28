@@ -4,3 +4,4 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+erpnext_ai_tutor.patches.v1_0.update_ai_tutor_system_prompt
