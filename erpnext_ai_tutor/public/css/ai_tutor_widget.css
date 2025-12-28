@@ -51,43 +51,12 @@
 	display: none !important;
 }
 
-.erpnext-ai-tutor-fade-in {
-	animation: erpnextAiTutorFadeIn 180ms ease-out both;
-}
-
-.erpnext-ai-tutor-fade-out {
-	animation: erpnextAiTutorFadeOut 160ms ease-in both;
-	pointer-events: none;
-}
-
-@keyframes erpnextAiTutorFadeIn {
-	from {
-		opacity: 0;
-		transform: translateY(6px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
-@keyframes erpnextAiTutorFadeOut {
-	from {
-		opacity: 1;
-		transform: translateY(0);
-	}
-	to {
-		opacity: 0;
-		transform: translateY(6px);
-	}
-}
-
 .erpnext-ai-tutor-swap-out {
-	animation: erpnextAiTutorSwapOut 140ms ease-in both;
+	animation: erpnextAiTutorSwapOut 200ms cubic-bezier(0.2, 0, 0.2, 1) both;
 }
 
 .erpnext-ai-tutor-swap-in {
-	animation: erpnextAiTutorSwapIn 180ms ease-out both;
+	animation: erpnextAiTutorSwapIn 240ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 @keyframes erpnextAiTutorSwapOut {
@@ -97,19 +66,53 @@
 	}
 	to {
 		opacity: 0;
-		transform: translateY(4px);
+		transform: translateY(2px);
 	}
 }
 
 @keyframes erpnextAiTutorSwapIn {
 	from {
 		opacity: 0;
-		transform: translateY(4px);
+		transform: translateY(2px);
 	}
 	to {
 		opacity: 1;
 		transform: translateY(0);
 	}
+}
+
+.erpnext-ai-tutor-content {
+	position: relative;
+	flex: 1;
+	overflow: hidden;
+	background: var(--card-bg);
+}
+
+.erpnext-ai-tutor-view {
+	position: absolute;
+	inset: 0;
+	padding: 12px;
+	overflow: auto;
+	opacity: 0;
+	transform: translateY(2px);
+	visibility: hidden;
+	pointer-events: none;
+	will-change: opacity, transform;
+	transition:
+		opacity 220ms cubic-bezier(0.2, 0, 0.2, 1),
+		transform 220ms cubic-bezier(0.2, 0, 0.2, 1),
+		visibility 0ms linear 220ms;
+}
+
+.erpnext-ai-tutor-view.is-active {
+	opacity: 1;
+	transform: translateY(0);
+	visibility: visible;
+	pointer-events: auto;
+	transition:
+		opacity 240ms cubic-bezier(0.2, 0, 0, 1),
+		transform 240ms cubic-bezier(0.2, 0, 0, 1),
+		visibility 0ms linear 0ms;
 }
 
 .erpnext-ai-tutor-header {
@@ -182,20 +185,14 @@
 }
 
 .erpnext-ai-tutor-body {
-	padding: 12px;
-	overflow: auto;
-	flex: 1;
-	background: var(--card-bg);
+	background: transparent;
 }
 
 .erpnext-ai-tutor-history {
-	padding: 12px;
-	overflow: auto;
-	flex: 1;
-	background: var(--card-bg);
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
+	background: transparent;
 }
 
 .erpnext-ai-tutor-history-title-row {
@@ -475,6 +472,21 @@
 	border-top: 1px solid var(--border-color);
 	padding: 10px;
 	background: var(--bg-color);
+	max-height: 120px;
+	overflow: hidden;
+	transition:
+		max-height 260ms cubic-bezier(0.2, 0, 0.2, 1),
+		opacity 180ms ease,
+		transform 180ms ease;
+}
+
+.erpnext-ai-tutor-footer.is-collapsed {
+	max-height: 0;
+	opacity: 0;
+	transform: translateY(6px);
+	padding-top: 0;
+	padding-bottom: 0;
+	border-top-width: 0;
 }
 
 .erpnext-ai-tutor-form {
@@ -527,18 +539,8 @@
 	height: 18px;
 }
 
-.erpnext-ai-tutor-send.is-busy svg {
-	animation: erpnextAiTutorSendSpin 0.9s linear infinite;
-	transform-origin: 50% 50%;
-}
-
-@keyframes erpnextAiTutorSendSpin {
-	from {
-		transform: rotate(0deg);
-	}
-	to {
-		transform: rotate(360deg);
-	}
+.erpnext-ai-tutor-send.is-busy {
+	opacity: 0.75;
 }
 
 .erpnext-ai-tutor-send:disabled {

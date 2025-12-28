@@ -245,8 +245,10 @@
 							${frappe?.utils?.icon ? frappe.utils.icon("close", "sm") : "×"}
 						</button>
 					</div>
-					<div class="erpnext-ai-tutor-body"></div>
-					<div class="erpnext-ai-tutor-history erpnext-ai-tutor-hidden"></div>
+					<div class="erpnext-ai-tutor-content">
+						<div class="erpnext-ai-tutor-body erpnext-ai-tutor-view is-active"></div>
+						<div class="erpnext-ai-tutor-history erpnext-ai-tutor-view"></div>
+					</div>
 					<div class="erpnext-ai-tutor-footer">
 						<form class="erpnext-ai-tutor-form">
 							<textarea class="erpnext-ai-tutor-input" rows="1" placeholder="Savolingizni yozing..."></textarea>
@@ -473,60 +475,22 @@
 
 		toggleHistory() {
 			if (!this.$history || !this.$body) return;
-			const isHidden = this.$history.classList.contains("erpnext-ai-tutor-hidden");
-			if (isHidden) this.showHistory();
+			const isOpen = this.$history.classList.contains("is-active");
+			if (!isOpen) this.showHistory();
 			else this.hideHistory();
 		}
 
-		clearViewAnimations() {
-			if (this._viewTransitionTimer) {
-				clearTimeout(this._viewTransitionTimer);
-				this._viewTransitionTimer = null;
-			}
-			for (const el of [this.$body, this.$history, this.$footer]) {
-				if (!el) continue;
-				el.classList.remove("erpnext-ai-tutor-fade-in", "erpnext-ai-tutor-fade-out");
-			}
-		}
-
 		showHistory() {
-			this.clearViewAnimations();
 			this.renderHistoryList();
-			this.$body.classList.remove("erpnext-ai-tutor-hidden");
-			this.$footer.classList.remove("erpnext-ai-tutor-hidden");
-			this.$history.classList.remove("erpnext-ai-tutor-hidden");
-
-			this.$history.classList.add("erpnext-ai-tutor-fade-in");
-			this.$body.classList.add("erpnext-ai-tutor-fade-out");
-			this.$footer.classList.add("erpnext-ai-tutor-fade-out");
-
-			this._viewTransitionTimer = setTimeout(() => {
-				this.$history.classList.remove("erpnext-ai-tutor-fade-in");
-				this.$body.classList.remove("erpnext-ai-tutor-fade-out");
-				this.$footer.classList.remove("erpnext-ai-tutor-fade-out");
-				this.$body.classList.add("erpnext-ai-tutor-hidden");
-				this.$footer.classList.add("erpnext-ai-tutor-hidden");
-				this._viewTransitionTimer = null;
-			}, 190);
+			this.$history.classList.add("is-active");
+			this.$body.classList.remove("is-active");
+			this.$footer.classList.add("is-collapsed");
 		}
 
 		hideHistory() {
-			this.clearViewAnimations();
-			this.$history.classList.remove("erpnext-ai-tutor-hidden");
-			this.$body.classList.remove("erpnext-ai-tutor-hidden");
-			this.$footer.classList.remove("erpnext-ai-tutor-hidden");
-
-			this.$body.classList.add("erpnext-ai-tutor-fade-in");
-			this.$footer.classList.add("erpnext-ai-tutor-fade-in");
-			this.$history.classList.add("erpnext-ai-tutor-fade-out");
-
-			this._viewTransitionTimer = setTimeout(() => {
-				this.$history.classList.add("erpnext-ai-tutor-hidden");
-				this.$history.classList.remove("erpnext-ai-tutor-fade-out");
-				this.$body.classList.remove("erpnext-ai-tutor-fade-in");
-				this.$footer.classList.remove("erpnext-ai-tutor-fade-in");
-				this._viewTransitionTimer = null;
-			}, 190);
+			this.$history.classList.remove("is-active");
+			this.$body.classList.add("is-active");
+			this.$footer.classList.remove("is-collapsed");
 		}
 
 		renderHistoryList() {
