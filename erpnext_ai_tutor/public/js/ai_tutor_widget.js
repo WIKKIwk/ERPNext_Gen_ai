@@ -10,6 +10,10 @@
 	const STORAGE_KEY_PREFIX = "erpnext_ai_tutor:";
 	const MAX_CONVERSATIONS = 20;
 	const MAX_MESSAGES_PER_CONVERSATION = 200;
+	const AUTO_HELP_COOLDOWN_MS = 45 * 1000;
+	const AUTO_HELP_RATE_WINDOW_MS = 60 * 1000;
+	const AUTO_HELP_RATE_MAX = 3;
+	const AUTO_HELP_FAILURE_COOLDOWN_MS = 2 * 60 * 1000;
 
 	const SENSITIVE_KEY_PARTS = [
 		"password",
@@ -187,6 +191,10 @@
 			this.conversations = [];
 			this.activeConversationId = null;
 			this.lastEvent = null;
+			this.lastAutoHelpKey = "";
+			this.lastAutoHelpAt = 0;
+			this.autoHelpDisabledUntil = 0;
+			this.autoHelpTimestamps = [];
 			this.$root = null;
 			this.$drawer = null;
 			this.$body = null;
@@ -700,6 +708,34 @@
 			this.handleEvent({ severity, title: "", message: stripHtml(message), source: "alert" });
 		}
 
+		fingerprintEvent(ev) {
+			const severity = String(ev?.severity || "").trim().toLowerCase();
+			const title = stripHtml(ev?.title || "").replace(/\s+/g, " ").trim().slice(0, 140);
+			const message = stripHtml(ev?.message || "").replace(/\s+/g, " ").trim().slice(0, 260);
+			return `${severity}|${title}|${message}`;
+		}
+
+		canAutoHelpNow(eventKey) {
+			const now = Date.now();
+			if (document.visibilityState === "hidden") return false;
+			if (this.isBusy) return false;
+			if (this.autoHelpDisabledUntil && now < this.autoHelpDisabledUntil) return false;
+			if (eventKey && this.lastAutoHelpKey === eventKey && now - this.lastAutoHelpAt < AUTO_HELP_COOLDOWN_MS) {
+				return false;
+			}
+
+			this.autoHelpTimestamps = (this.autoHelpTimestamps || []).filter((t) => now - t < AUTO_HELP_RATE_WINDOW_MS);
+			if (this.autoHelpTimestamps.length >= AUTO_HELP_RATE_MAX) {
+				this.autoHelpDisabledUntil = now + AUTO_HELP_FAILURE_COOLDOWN_MS;
+				return false;
+			}
+
+			this.lastAutoHelpKey = eventKey || "";
+			this.lastAutoHelpAt = now;
+			this.autoHelpTimestamps.push(now);
+			return true;
+		}
+
 		async handleEvent(ev) {
 			this.lastEvent = { ...ev, at: Date.now() };
 			const autoOpen =
@@ -709,6 +745,9 @@
 
 			this.open();
 			this.showPill(ev.severity);
+
+			const key = this.fingerprintEvent(ev);
+			if (!this.canAutoHelpNow(key)) return;
 			await this.autoHelp(ev);
 		}
 
@@ -789,7 +828,7 @@
 			]
 				.filter(Boolean)
 				.join("\n");
-			await this.ask(msg);
+			await this.ask(msg, { source: "auto" });
 		}
 
 		async sendUserMessage() {
@@ -797,10 +836,11 @@
 			const text = String(this.$input.value || "").trim();
 			if (!text) return;
 			this.$input.value = "";
-			await this.ask(text);
+			await this.ask(text, { source: "user" });
 		}
 
-		async ask(text) {
+		async ask(text, opts = { source: "user" }) {
+			if (this.isBusy) return;
 			this.hideHistory();
 			const userEl = this.append("user", text);
 			this.setBusy(true);
@@ -819,14 +859,30 @@
 					context: ctx,
 					history,
 				});
-				const reply = r?.message?.reply || r?.message?.reply || r?.message?.message || r?.message;
+				let replyText = "";
+				if (typeof r?.message?.reply === "string") replyText = r.message.reply;
+				else if (typeof r?.message?.message === "string") replyText = r.message.message;
+				else if (typeof r?.message === "string") replyText = r.message;
+				replyText = String(replyText ?? "").trim();
+				if (!replyText) {
+					throw new Error("EMPTY_REPLY");
+				}
 				this.hideTyping();
 				this.setMessageStatus(userEl, "sent");
-				this.append("assistant", reply || "Javob bo‘sh keldi.");
+				this.append("assistant", replyText);
 			} catch (e) {
 				this.hideTyping();
 				this.setMessageStatus(userEl, "failed");
-				this.append("assistant", "AI bilan bog‘lanishda xatolik. AI Settings (OpenAI/Gemini API key) sozlanganini tekshiring.");
+				const isEmptyReply = String(e?.message || "") === "EMPTY_REPLY";
+				if (opts?.source === "auto") {
+					this.autoHelpDisabledUntil = Date.now() + AUTO_HELP_FAILURE_COOLDOWN_MS;
+				}
+				this.append(
+					"assistant",
+					isEmptyReply
+						? "AI javobi bo'sh keldi. Iltimos bir marta sahifani yangilang (Ctrl+Shift+R) va qayta urinib ko'ring."
+						: "AI bilan bog‘lanishda xatolik. AI Settings (OpenAI/Gemini API key) sozlanganini tekshiring."
+				);
 			} finally {
 				this.hideTyping();
 				this.setBusy(false);
