@@ -156,6 +156,7 @@
 			this.config = null;
 			this.aiReady = false;
 			this.isOpen = false;
+			this.isBusy = false;
 			this.history = [];
 			this.conversations = [];
 			this.activeConversationId = null;
@@ -170,6 +171,7 @@
 			this.$pill = null;
 			this.$historyBtn = null;
 			this.$newChatBtn = null;
+			this.$typing = null;
 		}
 
 		async init() {
@@ -385,6 +387,42 @@
 			this.$body.appendChild(wrap);
 		}
 
+		showTyping() {
+			this.hideTyping();
+			if (!this.$body) return;
+
+			const wrap = document.createElement("div");
+			wrap.className = "erpnext-ai-tutor-message assistant erpnext-ai-tutor-typing";
+
+			const bubble = document.createElement("div");
+			bubble.className = "erpnext-ai-tutor-bubble";
+
+			const dots = document.createElement("div");
+			dots.className = "erpnext-ai-tutor-typing-dots";
+
+			for (let i = 0; i < 3; i++) {
+				const dot = document.createElement("span");
+				dot.className = "erpnext-ai-tutor-typing-dot";
+				dots.appendChild(dot);
+			}
+
+			bubble.appendChild(dots);
+			wrap.appendChild(bubble);
+			this.$body.appendChild(wrap);
+			this.$typing = wrap;
+			this.$body.scrollTop = this.$body.scrollHeight;
+		}
+
+		hideTyping() {
+			if (!this.$typing) return;
+			try {
+				this.$typing.remove();
+			} catch {
+				// ignore
+			}
+			this.$typing = null;
+		}
+
 		toggleHistory() {
 			if (!this.$history || !this.$body) return;
 			const isHidden = this.$history.classList.contains("erpnext-ai-tutor-hidden");
@@ -585,6 +623,7 @@
 			this.isOpen = false;
 			this.$drawer.classList.add("erpnext-ai-tutor-hidden");
 			this.clearPill();
+			this.hideTyping();
 		}
 
 		toggle() {
@@ -614,6 +653,7 @@
 
 		setBusy(on) {
 			if (!this.$send) return;
+			this.isBusy = Boolean(on);
 			this.$send.disabled = Boolean(on);
 			if (on) this.$send.textContent = "…";
 			else this.$send.textContent = "Yuborish";
@@ -633,6 +673,7 @@
 		}
 
 		async sendUserMessage() {
+			if (this.isBusy) return;
 			const text = String(this.$input.value || "").trim();
 			if (!text) return;
 			this.$input.value = "";
@@ -643,6 +684,7 @@
 			this.hideHistory();
 			this.append("user", text);
 			this.setBusy(true);
+			this.showTyping();
 			try {
 				const ctx = getContextSnapshot(this.config, this.lastEvent);
 				const history = this.history.slice(-20);
@@ -656,10 +698,13 @@
 					history,
 				});
 				const reply = r?.message?.reply || r?.message?.reply || r?.message?.message || r?.message;
+				this.hideTyping();
 				this.append("assistant", reply || "Javob bo‘sh keldi.");
 			} catch (e) {
+				this.hideTyping();
 				this.append("assistant", "AI bilan bog‘lanishda xatolik. AI Settings (OpenAI/Gemini API key) sozlanganini tekshiring.");
 			} finally {
+				this.hideTyping();
 				this.setBusy(false);
 			}
 		}

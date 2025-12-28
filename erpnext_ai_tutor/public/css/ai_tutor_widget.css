@@ -180,6 +180,47 @@
 	color: var(--text-muted, rgba(255, 255, 255, 0.6));
 }
 
+.erpnext-ai-tutor-typing .erpnext-ai-tutor-bubble {
+	padding: 12px 12px;
+}
+
+.erpnext-ai-tutor-typing-dots {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 14px;
+}
+
+.erpnext-ai-tutor-typing-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 999px;
+	background: var(--text-color);
+	opacity: 0.6;
+	animation: erpnextAiTutorTyping 1.2s infinite ease-in-out;
+}
+
+.erpnext-ai-tutor-typing-dot:nth-child(2) {
+	animation-delay: 0.15s;
+}
+
+.erpnext-ai-tutor-typing-dot:nth-child(3) {
+	animation-delay: 0.3s;
+}
+
+@keyframes erpnextAiTutorTyping {
+	0%,
+	80%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.35;
+	}
+	40% {
+		transform: translateY(-3px);
+		opacity: 0.95;
+	}
+}
+
 .erpnext-ai-tutor-message {
 	display: flex;
 	margin: 10px 0;
