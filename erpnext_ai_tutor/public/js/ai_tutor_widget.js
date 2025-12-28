@@ -409,11 +409,19 @@
 
 			const meta = document.createElement("div");
 			meta.className = "erpnext-ai-tutor-meta";
-			meta.textContent = ts ? formatTime(ts) : nowTime();
+			const metaTime = document.createElement("span");
+			metaTime.className = "erpnext-ai-tutor-meta-time";
+			metaTime.textContent = ts ? formatTime(ts) : nowTime();
+
+			const metaStatus = document.createElement("span");
+			metaStatus.className = "erpnext-ai-tutor-meta-status";
+
+			meta.append(metaTime, metaStatus);
 
 			bubble.append(text, meta);
 			wrap.appendChild(bubble);
 			this.$body.appendChild(wrap);
+			return wrap;
 		}
 
 		showTyping() {
@@ -742,7 +750,7 @@
 
 			const ts = Date.now();
 			this.history.push({ role, content });
-			this.appendToDOM(role, content, ts);
+			const el = this.appendToDOM(role, content, ts, { animate: true });
 
 			const conv = this.getActiveConversation();
 			if (conv) {
@@ -754,6 +762,13 @@
 				this.saveChatState();
 			}
 			this.$body.scrollTop = this.$body.scrollHeight;
+			return el;
+		}
+
+		setMessageStatus(messageEl, status) {
+			if (!messageEl) return;
+			messageEl.classList.remove("sending", "sent", "failed");
+			if (status) messageEl.classList.add(status);
 		}
 
 		setBusy(on) {
@@ -787,9 +802,10 @@
 
 		async ask(text) {
 			this.hideHistory();
-			this.append("user", text);
+			const userEl = this.append("user", text);
 			this.setBusy(true);
 			this.showTyping();
+			this.setMessageStatus(userEl, "sending");
 			try {
 				const ctx = getContextSnapshot(this.config, this.lastEvent);
 				if (this.activeField) ctx.active_field = sanitize(this.activeField);
@@ -805,9 +821,11 @@
 				});
 				const reply = r?.message?.reply || r?.message?.reply || r?.message?.message || r?.message;
 				this.hideTyping();
+				this.setMessageStatus(userEl, "sent");
 				this.append("assistant", reply || "Javob bo‘sh keldi.");
 			} catch (e) {
 				this.hideTyping();
+				this.setMessageStatus(userEl, "failed");
 				this.append("assistant", "AI bilan bog‘lanishda xatolik. AI Settings (OpenAI/Gemini API key) sozlanganini tekshiring.");
 			} finally {
 				this.hideTyping();
