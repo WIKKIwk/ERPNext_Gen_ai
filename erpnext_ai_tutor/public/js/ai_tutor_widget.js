@@ -94,6 +94,26 @@
 		return s.slice(0, max - 1) + "…";
 	}
 
+	function getPageHeading() {
+		const selectors = [
+			".page-title .title-text",
+			".page-head .title-text",
+			".page-title h1",
+			".page-head h1",
+			".page-head h3",
+			".page-title",
+		];
+		for (const sel of selectors) {
+			const el = document.querySelector(sel);
+			if (!el) continue;
+			const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+			if (!text) continue;
+			if (text.length > 140) continue;
+			return text;
+		}
+		return "";
+	}
+
 	function getFormContext(includeDocValues) {
 		const frm = window.cur_frm;
 		if (!frm || !frm.doctype) return null;
@@ -133,11 +153,15 @@
 
 	function getContextSnapshot(config, lastEvent) {
 		const includeDocValues = Boolean(config?.include_doc_values);
+		const page_heading = getPageHeading();
 		const snapshot = {
 			route: typeof frappe.get_route === "function" ? frappe.get_route() : [],
 			route_str: typeof frappe.get_route_str === "function" ? frappe.get_route_str() : "",
 			page_title: document.title || "",
+			page_heading: page_heading || "",
 			hash: window.location.hash || "",
+			pathname: window.location.pathname || "",
+			search: window.location.search || "",
 			url: window.location.href,
 			user: frappe.session && frappe.session.user,
 			event: lastEvent || null,
@@ -583,7 +607,7 @@
 			if (!isInputLike) return;
 
 			const wrapper = target.closest("[data-fieldname]");
-			const fieldname = wrapper?.dataset?.fieldname || "";
+			const fieldname = wrapper?.dataset?.fieldname || target.getAttribute("name") || target.id || "";
 			let label = "";
 
 			try {
@@ -596,6 +620,13 @@
 			if (!label && wrapper) {
 				const labelEl = wrapper.querySelector("label");
 				label = (labelEl?.textContent || "").trim();
+			}
+
+			if (!label) {
+				label =
+					(target.getAttribute("aria-label") || "").trim() ||
+					(target.getAttribute("placeholder") || "").trim() ||
+					(label || "");
 			}
 
 			let value = "";
