@@ -1,4 +1,4 @@
-### ERPNext AI Tutor
+ ### ERPNext AI Tutor
 
 Desk-side AI tutor widget with error capture
 
