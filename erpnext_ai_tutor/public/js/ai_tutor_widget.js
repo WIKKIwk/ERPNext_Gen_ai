@@ -14,6 +14,8 @@
 	const AUTO_HELP_RATE_WINDOW_MS = 60 * 1000;
 	const AUTO_HELP_RATE_MAX = 3;
 	const AUTO_HELP_FAILURE_COOLDOWN_MS = 2 * 60 * 1000;
+	const AUTO_HELP_PREFIX_UZ = "ERP tizimida xatolik/ogohlantirish chiqdi.";
+	const AUTO_HELP_PREFIX_EN = "ERP system reported an error or warning.";
 
 	const SENSITIVE_KEY_PARTS = [
 		"password",
@@ -228,35 +230,35 @@
 					${frappe?.utils?.icon ? frappe.utils.icon("es-line-question", "md") : "AI"}
 				</button>
 				<div class="erpnext-ai-tutor-drawer erpnext-ai-tutor-hidden" role="dialog" aria-label="AI Tutor">
-					<div class="erpnext-ai-tutor-header">
-						<div>
-							<div class="erpnext-ai-tutor-title">AI Yordamchi</div>
-							<div class="erpnext-ai-tutor-subtitle">Sahifa bo‘yicha yordam</div>
-						</div>
-						<div class="erpnext-ai-tutor-header-spacer"></div>
-						<span class="erpnext-ai-tutor-pill erpnext-ai-tutor-hidden"></span>
-						<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-history-btn" type="button" aria-label="Chatlar tarixi">
-							${frappe?.utils?.icon ? frappe.utils.icon("es-line-time", "sm") : "🕘"}
-						</button>
-						<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-new-btn" type="button" aria-label="Yangi chat">
-							${frappe?.utils?.icon ? frappe.utils.icon("es-line-add", "sm") : "+"}
-						</button>
-						<button class="erpnext-ai-tutor-close" type="button" aria-label="Yopish">
-							${frappe?.utils?.icon ? frappe.utils.icon("close", "sm") : "×"}
-						</button>
-					</div>
+							<div class="erpnext-ai-tutor-header">
+								<div>
+									<div class="erpnext-ai-tutor-title">AI Tutor</div>
+									<div class="erpnext-ai-tutor-subtitle">Help for this page</div>
+								</div>
+								<div class="erpnext-ai-tutor-header-spacer"></div>
+								<span class="erpnext-ai-tutor-pill erpnext-ai-tutor-hidden"></span>
+								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-history-btn" type="button" aria-label="Chat history">
+									${frappe?.utils?.icon ? frappe.utils.icon("es-line-time", "sm") : "🕘"}
+								</button>
+								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-new-btn" type="button" aria-label="New chat">
+									${frappe?.utils?.icon ? frappe.utils.icon("es-line-add", "sm") : "+"}
+								</button>
+								<button class="erpnext-ai-tutor-close" type="button" aria-label="Close">
+									${frappe?.utils?.icon ? frappe.utils.icon("close", "sm") : "×"}
+								</button>
+							</div>
 					<div class="erpnext-ai-tutor-content">
 						<div class="erpnext-ai-tutor-body erpnext-ai-tutor-view is-active"></div>
 						<div class="erpnext-ai-tutor-history erpnext-ai-tutor-view"></div>
 					</div>
-					<div class="erpnext-ai-tutor-footer">
-						<form class="erpnext-ai-tutor-form">
-							<textarea class="erpnext-ai-tutor-input" rows="1" placeholder="Savolingizni yozing..."></textarea>
-							<button class="erpnext-ai-tutor-send" type="submit" aria-label="Yuborish" title="Yuborish">
-								${frappe?.utils?.icon ? frappe.utils.icon("es-line-arrow-up-right", "md") : "➤"}
-							</button>
-						</form>
-					</div>
+						<div class="erpnext-ai-tutor-footer">
+							<form class="erpnext-ai-tutor-form">
+								<textarea class="erpnext-ai-tutor-input" rows="1" placeholder="Type your question..."></textarea>
+								<button class="erpnext-ai-tutor-send" type="submit" aria-label="Send" title="Send">
+									${frappe?.utils?.icon ? frappe.utils.icon("es-line-arrow-up-right", "md") : "➤"}
+								</button>
+							</form>
+						</div>
 				</div>
 			`;
 
@@ -357,16 +359,16 @@
 			this.newChat({ render: false });
 		}
 
-		newChat(opts = { render: true }) {
-			const id = makeId("tutor");
-			const now = Date.now();
-			const conversation = {
-				id,
-				title: "Yangi chat",
-				created_at: now,
-				updated_at: now,
-				messages: [],
-			};
+			newChat(opts = { render: true }) {
+				const id = makeId("tutor");
+				const now = Date.now();
+				const conversation = {
+					id,
+					title: "New chat",
+					created_at: now,
+					updated_at: now,
+					messages: [],
+				};
 			this.conversations.unshift(conversation);
 			this.activeConversationId = id;
 			this.pruneChatState();
@@ -378,20 +380,21 @@
 			}
 		}
 
-		setConversationTitleIfNeeded(message) {
-			const conv = this.getActiveConversation();
-			if (!conv) return;
-			if (conv.title && conv.title !== "Yangi chat") return;
+			setConversationTitleIfNeeded(message) {
+				const conv = this.getActiveConversation();
+				if (!conv) return;
+				if (conv.title && conv.title !== "New chat" && conv.title !== "Yangi chat") return;
 
-			const isAuto = String(message || "").trim().startsWith("ERP tizimida xatolik/ogohlantirish chiqdi.");
-			if (isAuto && this.lastEvent) {
-				const prefix = this.lastEvent.severity === "error" ? "Xatolik" : "Ogohlantirish";
-				const title = clip(this.lastEvent.title || this.lastEvent.message || "", 48);
-				conv.title = title ? `${prefix}: ${title}` : `${prefix}`;
-			} else {
-				conv.title = clip(message, 48) || "Yangi chat";
+				const text = String(message || "").trim();
+				const isAuto = text.startsWith(AUTO_HELP_PREFIX_UZ) || text.startsWith(AUTO_HELP_PREFIX_EN);
+				if (isAuto && this.lastEvent) {
+					const prefix = this.lastEvent.severity === "error" ? "Error" : "Warning";
+					const title = clip(this.lastEvent.title || this.lastEvent.message || "", 48);
+					conv.title = title ? `${prefix}: ${title}` : `${prefix}`;
+				} else {
+					conv.title = clip(message, 48) || "New chat";
+				}
 			}
-		}
 
 		renderActiveConversation() {
 			const conv = this.getActiveConversation();
@@ -498,10 +501,10 @@
 			const convs = Array.isArray(this.conversations) ? [...this.conversations] : [];
 			convs.sort((a, b) => (b?.updated_at || 0) - (a?.updated_at || 0));
 
-			if (!convs.length) {
-				this.$history.innerHTML = `<div class="erpnext-ai-tutor-history-empty">Hozircha chat yo‘q.</div>`;
-				return;
-			}
+				if (!convs.length) {
+					this.$history.innerHTML = `<div class="erpnext-ai-tutor-history-empty">No chats yet.</div>`;
+					return;
+				}
 
 			const rows = convs
 				.map((c) => {
@@ -517,12 +520,12 @@
 				})
 				.join("");
 
-			this.$history.innerHTML = `
-				<div class="erpnext-ai-tutor-history-title-row">
-					<div class="erpnext-ai-tutor-history-title">Chatlar</div>
-				</div>
-				<div class="erpnext-ai-tutor-history-list">${rows}</div>
-			`;
+				this.$history.innerHTML = `
+					<div class="erpnext-ai-tutor-history-title-row">
+						<div class="erpnext-ai-tutor-history-title">Chats</div>
+					</div>
+					<div class="erpnext-ai-tutor-history-list">${rows}</div>
+				`;
 
 			for (const el of this.$history.querySelectorAll(".erpnext-ai-tutor-history-item")) {
 				el.addEventListener("click", () => {
@@ -580,25 +583,25 @@
 			}
 
 			// Catch unhandled JS errors too (best-effort).
-			window.addEventListener("unhandledrejection", (event) => {
-				try {
-					const reason = event?.reason;
-					const message = stripHtml(reason?.message || reason || "Unhandled promise rejection");
-					this.handleEvent({ severity: "error", title: "Frontend xatolik", message, source: "unhandledrejection" });
-				} catch {
-					// ignore
-				}
-			});
+				window.addEventListener("unhandledrejection", (event) => {
+					try {
+						const reason = event?.reason;
+						const message = stripHtml(reason?.message || reason || "Unhandled promise rejection");
+						this.handleEvent({ severity: "error", title: "Frontend error", message, source: "unhandledrejection" });
+					} catch {
+						// ignore
+					}
+				});
 
-			window.addEventListener("error", (event) => {
-				try {
-					const message = stripHtml(event?.message || "Frontend xatolik");
-					this.handleEvent({ severity: "error", title: "Frontend xatolik", message, source: "window.error" });
-				} catch {
-					// ignore
-				}
-			});
-		}
+				window.addEventListener("error", (event) => {
+					try {
+						const message = stripHtml(event?.message || "Frontend error");
+						this.handleEvent({ severity: "error", title: "Frontend error", message, source: "window.error" });
+					} catch {
+						// ignore
+					}
+				});
+			}
 
 		installContextCapture() {
 			if (this._contextCaptureInstalled) return;
@@ -760,12 +763,12 @@
 			await this.autoHelp(ev);
 		}
 
-		showPill(severity) {
-			if (!this.$pill) return;
-			this.$pill.classList.remove("erpnext-ai-tutor-hidden", "red", "orange");
-			this.$pill.classList.add(severity === "error" ? "red" : "orange");
-			this.$pill.textContent = severity === "error" ? "Xatolik" : "Ogohlantirish";
-		}
+			showPill(severity) {
+				if (!this.$pill) return;
+				this.$pill.classList.remove("erpnext-ai-tutor-hidden", "red", "orange");
+				this.$pill.classList.add(severity === "error" ? "red" : "orange");
+				this.$pill.textContent = severity === "error" ? "Error" : "Warning";
+			}
 
 		clearPill() {
 			if (!this.$pill) return;
@@ -856,17 +859,19 @@
 			}, 150);
 		}
 
-		async autoHelp(ev) {
-			const msg = [
-				"ERP tizimida xatolik/ogohlantirish chiqdi.",
-				ev.title ? `Sarlavha: ${ev.title}` : null,
-				ev.message ? `Xabar: ${ev.message}` : null,
-				"",
-				"Iltimos, bu nimani anglatishini o'zbekcha tushuntirib bering va shu sahifada qanday tuzatishimni kamida 5 ta qadam bilan ayting.",
-			]
-				.filter(Boolean)
-				.join("\n");
-			await this.ask(msg, { source: "auto" });
+			async autoHelp(ev) {
+				const lang = String(this.config?.language || "uz").trim().toLowerCase();
+				const replyLang = lang === "ru" ? "Russian" : lang === "en" ? "English" : "Uzbek";
+				const msg = [
+					AUTO_HELP_PREFIX_EN,
+					ev.title ? `Title: ${ev.title}` : null,
+					ev.message ? `Message: ${ev.message}` : null,
+					"",
+					`Please explain what this means and give at least 5 concrete steps to fix it on this page. Please reply in ${replyLang}.`,
+				]
+					.filter(Boolean)
+					.join("\n");
+				await this.ask(msg, { source: "auto" });
 		}
 
 		async sendUserMessage() {
@@ -917,16 +922,16 @@
 					this.autoHelpDisabledUntil = Date.now() + AUTO_HELP_FAILURE_COOLDOWN_MS;
 					return;
 				}
-				this.append(
-					"assistant",
-					isEmptyReply
-						? "AI javob bermadi. Iltimos qayta urinib ko'ring."
-						: "AI bilan bog‘lanishda xatolik. AI Settings (OpenAI/Gemini API key) sozlanganini tekshiring."
-				);
-			} finally {
-				this.hideTyping();
-				this.setBusy(false);
-			}
+					this.append(
+						"assistant",
+						isEmptyReply
+							? "AI didn't reply. Please try again."
+							: "Couldn't reach AI. Check AI Settings (OpenAI/Gemini API key)."
+					);
+				} finally {
+					this.hideTyping();
+					this.setBusy(false);
+				}
 		}
 	}
 

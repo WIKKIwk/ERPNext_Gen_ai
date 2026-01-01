@@ -122,7 +122,10 @@ def _call_llm(*, messages: List[dict], max_tokens: int | None = None) -> str:
 	return call_with(2048)
 
 
-_AUTO_HELP_PREFIX_RE = re.compile(r"^\s*ERP\s+tizimida\s+xatolik/ogohlantirish\s+chiqdi\.", re.IGNORECASE)
+_AUTO_HELP_PREFIX_RE = re.compile(
+	r"^\s*(?:ERP\s+tizimida\s+xatolik/ogohlantirish\s+chiqdi\.|ERP\s+system\s+reported\s+an\s+error\s+or\s+warning\.)",
+	re.IGNORECASE,
+)
 
 
 _TROUBLE_KEYWORDS_RE = re.compile(

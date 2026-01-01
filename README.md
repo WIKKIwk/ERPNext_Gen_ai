@@ -140,7 +140,8 @@ LLM SAFETY
 ```text
 AUTO HELP DETECTION
   Auto-generated troubleshooting prompts start with:
-    "ERP tizimida xatolik/ogohlantirish chiqdi."
+    - "ERP tizimida xatolik/ogohlantirish chiqdi."
+    - "ERP system reported an error or warning."
 
 AUTO HELP RATE LIMITS (CLIENT)
   - Cooldown per unique event fingerprint ............. 45s
