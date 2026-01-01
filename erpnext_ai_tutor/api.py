@@ -131,7 +131,7 @@ _TROUBLE_KEYWORDS_RE = re.compile(
 )
 
 _GREETING_ONLY_RE = re.compile(
-	r"^\s*(salom|assalomu\s+alaykum|asalomu\s+alaykum|salam|hi|hello|hey|rahmat|raxmat|thanks|thx)\s*[!?.…]*\s*$",
+	r"^\s*(salom|assalomu\s+alaykum|asalomu\s+alaykum|salam|hi|hello|hey|rahmat|raxmat|thanks|thx|привет|здравствуйте|спасибо|благодарю)\s*[!?.…]*\s*$",
 	re.IGNORECASE,
 )
 
@@ -146,6 +146,126 @@ _DISMISSIVE_RE = re.compile(
 	r"(ko['’]ra\s+olmayman|visual\s+ma['’]lumot|ko['’]rinmaydi|cannot\s+see|can['’]t\s+see|i\s+can['’]t\s+see|url\s+manzilini\s+ayt)",
 	re.IGNORECASE,
 )
+
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+_UZ_CYRILLIC_HINT_RE = re.compile(r"[ўқғҳЎҚҒҲ]")
+_EN_HINT_RE = re.compile(
+	r"\b(the|and|or|but|what|why|how|where|when|who|which|hi|hello|hey|please|thanks|thx|thank\s+you)\b",
+	re.IGNORECASE,
+)
+_LANG_REQUEST_EN_RE = re.compile(
+	r"(?:^|\b)(english|in\s+english|speak\s+english|respond\s+in\s+english|ingliz|inglizcha|en)(?:\b|$)",
+	re.IGNORECASE,
+)
+_LANG_REQUEST_RU_RE = re.compile(
+	r"(?:^|\b)(russian|in\s+russian|speak\s+russian|respond\s+in\s+russian|ruscha|ru)(?:\b|$)|по[-\s]?русски|русск",
+	re.IGNORECASE,
+)
+_LANG_REQUEST_UZ_RE = re.compile(
+	r"(?:^|\b)(uzbek|o['’]zbek|o‘zbek|uzbekcha|o['’]zbekcha|o‘zbekcha|uz)(?:\b|$)|o['’]zbek|o‘zbek|по[-\s]?узбекски",
+	re.IGNORECASE,
+)
+
+
+def _normalize_lang(lang: str | None) -> str:
+	raw = (lang or "").strip().lower()
+	if not raw:
+		return "uz"
+	raw = raw.replace("_", "-").split("-", 1)[0]
+	if raw in {"uz", "ru", "en"}:
+		return raw
+	return "uz"
+
+
+def _detect_user_lang(user_message: str, *, fallback: str) -> str:
+	text = (user_message or "").strip()
+	if not text:
+		return fallback
+
+	# Explicit language request overrides message script detection.
+	if _LANG_REQUEST_EN_RE.search(text):
+		return "en"
+	if _LANG_REQUEST_RU_RE.search(text):
+		return "ru"
+	if _LANG_REQUEST_UZ_RE.search(text):
+		return "uz"
+
+	if _CYRILLIC_RE.search(text):
+		return "uz" if _UZ_CYRILLIC_HINT_RE.search(text) else "ru"
+
+	if _EN_HINT_RE.search(text):
+		return "en"
+
+	return fallback
+
+
+def _language_policy_system_message(*, fallback: str) -> str:
+	fallback = _normalize_lang(fallback)
+	fallback_label = {"uz": "Uzbek (uz)", "ru": "Russian (ru)", "en": "English (en)"}[fallback]
+	return (
+		"LANGUAGE POLICY:\n"
+		"- Reply in the same language as the user's last message.\n"
+		"- If the user explicitly requests a language, follow it.\n"
+		f"- If the user's message is language-ambiguous (numbers/code), default to {fallback_label}.\n"
+		"- Do not mix languages unless the user does.\n"
+		"- This policy overrides other language instructions.\n"
+		)
+
+
+def _language_for_response_system_message(*, lang: str, fallback: str) -> str:
+	lang = _normalize_lang(lang or fallback)
+	if lang == "ru":
+		return "For this response: reply in Russian (ru). Do not reply in Uzbek or English."
+	if lang == "en":
+		return "For this response: reply in English (en). Do not reply in Uzbek or Russian."
+	return "For this response: reply in Uzbek (uz). Do not reply in Russian or English."
+
+
+def _reply_text(key: str, *, lang: str) -> str:
+	lang = _normalize_lang(lang)
+	table = {
+		"greeting": {
+			"uz": "Salom! Qanday yordam bera olaman?",
+			"ru": "Привет! Чем могу помочь?",
+			"en": "Hi! How can I help?",
+		},
+		"disabled": {
+			"uz": "AI Tutor o'chirilgan (AI Tutor Settings).",
+			"ru": "AI Tutor отключен (AI Tutor Settings).",
+			"en": "AI Tutor is disabled (AI Tutor Settings).",
+		},
+		"empty_message": {
+			"uz": "Xabar bo'sh bo'lmasin.",
+			"ru": "Сообщение не должно быть пустым.",
+			"en": "Message can't be empty.",
+		},
+		"continue_request": {
+			"uz": "Davom ettiring va javobni to'liq yakunlang.",
+			"ru": "Продолжите и полностью завершите ответ.",
+			"en": "Continue and finish the answer completely.",
+		},
+		"location_here": {
+			"uz": "Siz hozir shu joydasiz:\n",
+			"ru": "Вы сейчас здесь:\n",
+			"en": "You're here:\n",
+		},
+		"location_unknown": {
+			"uz": (
+				"Hozirgi sahifani aniqlay olmadim. Iltimos sahifani yangilang "
+				"yoki qaysi sahifada ekaningizni ayting (masalan: Item, Sales Invoice, Chart of Accounts)."
+			),
+			"ru": (
+				"Не удалось определить текущую страницу. Обновите страницу "
+				"или скажите, на какой странице вы сейчас (например: Item, Sales Invoice, Chart of Accounts)."
+			),
+			"en": (
+				"I couldn't detect your current page. Please refresh the page "
+				"or tell me which page you're on (e.g., Item, Sales Invoice, Chart of Accounts)."
+			),
+		},
+	}
+	return table.get(key, {}).get(lang) or table.get(key, {}).get("uz") or ""
+
 
 
 def _is_auto_help(user_message: str) -> bool:
@@ -177,39 +297,92 @@ def _coerce_text(value: Any) -> str:
 	return str(value)
 
 
-def _context_summary(ctx: Dict[str, Any]) -> str:
+def _bool_word(value: Any, *, lang: str) -> str:
+	lang = _normalize_lang(lang)
+	v = bool(value)
+	if lang == "ru":
+		return "да" if v else "нет"
+	if lang == "en":
+		return "yes" if v else "no"
+	return "ha" if v else "yo'q"
+
+
+def _context_summary(ctx: Dict[str, Any], *, lang: str) -> str:
+	lang = _normalize_lang(lang)
+	labels = {
+		"uz": {
+			"title": "Sarlavha",
+			"page_heading": "Sahifa nomi",
+			"page": "Sahifa",
+			"form": "Forma",
+			"is_new": "Yangi hujjat",
+			"is_dirty": "O'zgarish bor",
+			"missing_required": "Majburiy maydonlar bo'sh",
+			"active_field": "Aktiv maydon",
+			"active_value": "Aktiv qiymat",
+			"last_event": "Oxirgi hodisa",
+			"message": "Xabar",
+		},
+		"ru": {
+			"title": "Заголовок",
+			"page_heading": "Страница",
+			"page": "Путь",
+			"form": "Форма",
+			"is_new": "Новый документ",
+			"is_dirty": "Есть изменения",
+			"missing_required": "Обязательные поля пустые",
+			"active_field": "Активное поле",
+			"active_value": "Активное значение",
+			"last_event": "Последнее событие",
+			"message": "Сообщение",
+		},
+		"en": {
+			"title": "Title",
+			"page_heading": "Page",
+			"page": "Route",
+			"form": "Form",
+			"is_new": "New document",
+			"is_dirty": "Unsaved changes",
+			"missing_required": "Missing required fields",
+			"active_field": "Active field",
+			"active_value": "Active value",
+			"last_event": "Last event",
+			"message": "Message",
+		},
+	}[lang]
+
 	lines: List[str] = []
 
 	page_title = _coerce_text(ctx.get("page_title")).strip()
 	if page_title:
-		lines.append(f"Sarlavha: {page_title}")
+		lines.append(f"{labels['title']}: {page_title}")
 
 	page_heading = _coerce_text(ctx.get("page_heading")).strip()
 	if page_heading and page_heading != page_title:
-		lines.append(f"Sahifa nomi: {page_heading}")
+		lines.append(f"{labels['page_heading']}: {page_heading}")
 
 	route_str = _coerce_text(ctx.get("route_str")).strip()
 	if route_str:
-		lines.append(f"Sahifa: {route_str}")
+		lines.append(f"{labels['page']}: {route_str}")
 	else:
 		route = ctx.get("route")
 		if isinstance(route, list) and route:
-			lines.append("Sahifa: " + "/".join(_coerce_text(part) for part in route))
+			lines.append(f"{labels['page']}: " + "/".join(_coerce_text(part) for part in route))
 
 	form = ctx.get("form")
 	if isinstance(form, dict):
 		doctype = _coerce_text(form.get("doctype")).strip()
 		docname = _coerce_text(form.get("docname")).strip()
 		if doctype:
-			label = f"Forma: {doctype}"
+			label = f"{labels['form']}: {doctype}"
 			if docname:
 				label += f" ({docname})"
 			lines.append(label)
 
 		if "is_new" in form:
-			lines.append(f"Yangi hujjat: {bool(form.get('is_new'))}")
+			lines.append(f"{labels['is_new']}: {_bool_word(form.get('is_new'), lang=lang)}")
 		if "is_dirty" in form:
-			lines.append(f"O'zgarish bor: {bool(form.get('is_dirty'))}")
+			lines.append(f"{labels['is_dirty']}: {_bool_word(form.get('is_dirty'), lang=lang)}")
 
 		missing = form.get("missing_required")
 		if isinstance(missing, list) and missing:
@@ -221,7 +394,7 @@ def _context_summary(ctx: Dict[str, Any]) -> str:
 				if label:
 					missing_labels.append(label)
 			if missing_labels:
-				lines.append("Majburiy maydonlar bo'sh: " + ", ".join(missing_labels))
+				lines.append(f"{labels['missing_required']}: " + ", ".join(missing_labels))
 
 	active_field = ctx.get("active_field")
 	if isinstance(active_field, dict):
@@ -231,9 +404,9 @@ def _context_summary(ctx: Dict[str, Any]) -> str:
 		if fieldname or label:
 			name = label or fieldname
 			if fieldname and label and label != fieldname:
-				lines.append(f"Aktiv maydon: {name} ({fieldname})")
+				lines.append(f"{labels['active_field']}: {name} ({fieldname})")
 			else:
-				lines.append(f"Aktiv maydon: {name}")
+				lines.append(f"{labels['active_field']}: {name}")
 		if value:
 			# Double-check redaction for safety.
 			if fieldname and _redact_key(fieldname):
@@ -242,7 +415,7 @@ def _context_summary(ctx: Dict[str, Any]) -> str:
 				value = "[redacted]"
 			if value and value != "[redacted]":
 				value = value[:200]
-			lines.append(f"Aktiv qiymat: {value}")
+			lines.append(f"{labels['active_value']}: {value}")
 
 	event = ctx.get("event")
 	if isinstance(event, dict):
@@ -252,40 +425,34 @@ def _context_summary(ctx: Dict[str, Any]) -> str:
 		if severity or title:
 			parts = [p for p in (severity, title) if p]
 			if parts:
-				lines.append("Oxirgi hodisa: " + " | ".join(parts))
+				lines.append(f"{labels['last_event']}: " + " | ".join(parts))
 		if message:
-			lines.append("Xabar: " + message)
+			lines.append(f"{labels['message']}: " + message)
 
 	return "\n".join(lines).strip()
 
 
-def _location_reply(ctx: Dict[str, Any]) -> str:
+def _location_reply(ctx: Dict[str, Any], *, lang: str) -> str:
 	ctx2 = dict(ctx or {})
 	ctx2.pop("event", None)
-	summary = _context_summary(ctx2)
+	summary = _context_summary(ctx2, lang=lang)
 	if summary:
-		return "Siz hozir shu joydasiz:\n" + summary
-	return (
-		"Hozirgi sahifani aniqlay olmadim. Iltimos sahifani yangilang "
-		"yoki qaysi sahifada ekaningizni ayting (masalan: Item, Sales Invoice, Chart of Accounts)."
-	)
+		return _reply_text("location_here", lang=lang) + summary
+	return _reply_text("location_unknown", lang=lang)
 
 
-def _location_llm_reply(user_message: str, ctx: Dict[str, Any], cfg: TutorConfig) -> str:
+def _location_llm_reply(user_message: str, ctx: Dict[str, Any], cfg: TutorConfig, *, fallback_lang: str) -> str:
 	"""Use the LLM to answer location questions naturally, using provided context."""
+	lang = _detect_user_lang(user_message, fallback=fallback_lang)
 	ctx2 = dict(ctx or {})
 	ctx2.pop("event", None)
-	summary = _context_summary(ctx2)
+	summary = _context_summary(ctx2, lang=lang)
 	if not summary:
-		return _location_reply(ctx)
+		return _location_reply(ctx, lang=lang)
 
 	messages: List[dict] = [{"role": "system", "content": (cfg.system_prompt or "").strip()}]
-	if cfg.language == "uz":
-		messages.append({"role": "system", "content": "Always reply in Uzbek (uz) unless user requests another language."})
-	elif cfg.language == "ru":
-		messages.append({"role": "system", "content": "Always reply in Russian (ru) unless user requests another language."})
-	else:
-		messages.append({"role": "system", "content": "Always reply in English unless user requests another language."})
+	messages.append({"role": "system", "content": _language_policy_system_message(fallback=fallback_lang)})
+	messages.append({"role": "system", "content": _language_for_response_system_message(lang=lang, fallback=fallback_lang)})
 
 	messages.append(
 		{
@@ -303,7 +470,8 @@ def _location_llm_reply(user_message: str, ctx: Dict[str, Any], cfg: TutorConfig
 
 	reply = _call_llm(messages=messages, max_tokens=320).strip()
 	if not reply or _DISMISSIVE_RE.search(reply):
-		return _location_reply(ctx)
+		lang = _detect_user_lang(user_message, fallback=fallback_lang)
+		return _location_reply(ctx, lang=lang)
 	return reply
 
 def _shrink_doc(doc: Dict[str, Any], missing_required: Any | None = None) -> Dict[str, Any]:
@@ -385,12 +553,15 @@ def get_tutor_config() -> Dict[str, Any]:
 def chat(message: str, context: Any | None = None, history: Any | None = None) -> Dict[str, Any]:
 	"""Chat endpoint used by the Desk widget."""
 	cfg = AITutorSettings.get_config()
-	if not cfg.enabled:
-		return {"ok": False, "reply": "AI Tutor o'chirilgan (AI Tutor Settings)."}
-
 	user_message = (message or "").strip()
+	fallback_lang = _normalize_lang(cfg.language or "uz")
+	lang = _detect_user_lang(user_message, fallback=fallback_lang)
+
+	if not cfg.enabled:
+		return {"ok": False, "reply": _reply_text("disabled", lang=lang)}
+
 	if not user_message:
-		return {"ok": False, "reply": "Xabar bo'sh bo'lmasin."}
+		return {"ok": False, "reply": _reply_text("empty_message", lang=fallback_lang)}
 
 	raw_ctx = _parse_json_arg(context or {})
 	if not isinstance(raw_ctx, dict):
@@ -398,26 +569,16 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	ctx = sanitize(raw_ctx)
 	is_auto = _is_auto_help(user_message)
 	if _is_greeting_only(user_message):
-		return {"ok": True, "reply": "Salom! Qanday yordam bera olaman?"}
+		return {"ok": True, "reply": _reply_text("greeting", lang=lang)}
 
 	if isinstance(ctx, dict) and (_WHERE_AM_I_RE.search(user_message) or _WHICH_FIELD_RE.search(user_message)):
-		return {"ok": True, "reply": _location_llm_reply(user_message, ctx, cfg)}
+		return {"ok": True, "reply": _location_llm_reply(user_message, ctx, cfg, fallback_lang=fallback_lang)}
 
 	troubleshoot = is_auto or _wants_troubleshooting(user_message, ctx)
 
 	messages: List[dict] = [{"role": "system", "content": cfg.system_prompt.strip()}]
-	if cfg.language == "uz":
-		messages.append(
-			{"role": "system", "content": "Always reply in Uzbek (uz) unless user requests another language."}
-		)
-	elif cfg.language == "ru":
-		messages.append(
-			{"role": "system", "content": "Always reply in Russian (ru) unless user requests another language."}
-		)
-	else:
-		messages.append(
-			{"role": "system", "content": "Always reply in English unless user requests another language."}
-		)
+	messages.append({"role": "system", "content": _language_policy_system_message(fallback=fallback_lang)})
+	messages.append({"role": "system", "content": _language_for_response_system_message(lang=lang, fallback=fallback_lang)})
 
 	messages.append(
 		{
@@ -461,7 +622,7 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 
 		# Prefer a compact summary to avoid token exhaustion (helps prevent cut-off answers).
 		if isinstance(ctx_for_prompt, dict):
-			summary = _context_summary(ctx_for_prompt)
+			summary = _context_summary(ctx_for_prompt, lang=lang)
 			if summary:
 				messages.append(
 					{
@@ -514,13 +675,17 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	if troubleshoot and reply and _looks_truncated(reply):
 		continue_messages: List[dict] = [
 			messages[0],
-			{
-				"role": "system",
-				"content": "If you stopped due to length, continue exactly from where you stopped. Do not repeat.",
-			},
-			{"role": "assistant", "content": reply},
-			{"role": "user", "content": "Davom ettiring va javobni to'liq yakunlang."},
-		]
+			{"role": "system", "content": _language_policy_system_message(fallback=fallback_lang)},
+				{
+					"role": "system",
+					"content": (
+						"If you stopped due to length, continue exactly from where you stopped. "
+						"Keep the same language as the previous assistant reply. Do not repeat."
+					),
+				},
+				{"role": "assistant", "content": reply},
+				{"role": "user", "content": "Continue."},
+			]
 		try:
 			reply2 = _call_llm(messages=continue_messages)
 			if reply2:

@@ -294,7 +294,7 @@ FIELDS
 │   └── caps context JSON to prevent token exhaustion / slow responses
 │
 ├── Language (uz / ru / en)
-│   └── sets the default response language
+│   └── fallback language when message is ambiguous (auto-detects user language)
 │
 └── System Prompt (advanced)
     └── override the tutor's core behavior and troubleshooting style
