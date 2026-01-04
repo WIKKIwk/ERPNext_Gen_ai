@@ -168,7 +168,12 @@
 
 	function getPageActionUi() {
 		try {
+			const currentPage =
+				(frappe && frappe.container && frappe.container.page) ||
+				(window.cur_page && window.cur_page.page) ||
+				null;
 			const actionsRoot =
+				(currentPage && currentPage.querySelector && currentPage.querySelector(".page-actions")) ||
 				document.querySelector(".page-head .page-actions") ||
 				document.querySelector(".page-actions") ||
 				null;
@@ -185,7 +190,11 @@
 				return cleanText(attr) || cleanText(el.textContent);
 			};
 
-			const primaryEl = actionsRoot.querySelector(".primary-action, .btn-primary, [data-label]");
+			const primaryEl =
+				actionsRoot.querySelector(".primary-action") ||
+				actionsRoot.querySelector("button.btn-primary, a.btn.btn-primary") ||
+				actionsRoot.querySelector("[data-label]") ||
+				null;
 			const primary = primaryEl ? getLabel(primaryEl) : "";
 
 			const labels = [];

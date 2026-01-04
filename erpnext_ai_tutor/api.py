@@ -292,9 +292,12 @@ def _ui_guidance_system_message() -> str:
 	)
 
 
-_NEW_BUTTON_QUOTED_RE = re.compile(r"""(["'`“”])\s*New\s*\1""", re.IGNORECASE)
-_NEW_BUTTON_CONTEXT_RE = re.compile(
-	r"\bNew\b(?=\s*(?:tugma|tugmasi|tugmasini|button|кнопк))",
+_GENERIC_PRIMARY_LABEL_QUOTED_RE = re.compile(
+	r"""(["'`“”])\s*(?:New|Yangi|Новый)\s*\1""",
+	re.IGNORECASE,
+)
+_GENERIC_PRIMARY_LABEL_CONTEXT_RE = re.compile(
+	r"\b(?:New|Yangi|Новый)\b(?=\s*(?:tugma|tugmasi|tugmasini|button|кнопк))",
 	re.IGNORECASE,
 )
 
@@ -330,10 +333,17 @@ def _enforce_primary_action_label(reply: str, ctx: Dict[str, Any]) -> str:
 
 	primary_quoted = f"\"{primary}\""
 
-	# Replace quoted "New" first.
-	out = _NEW_BUTTON_QUOTED_RE.sub(primary_quoted, text)
-	# Replace unquoted New in button context.
-	out = _NEW_BUTTON_CONTEXT_RE.sub(primary_quoted, out)
+	# Replace quoted generic labels first.
+	out = _GENERIC_PRIMARY_LABEL_QUOTED_RE.sub(primary_quoted, text)
+	# Replace unquoted generic labels in button context.
+	out = _GENERIC_PRIMARY_LABEL_CONTEXT_RE.sub(primary_quoted, out)
+	# If we ended up with duplicated labels (e.g., '"Add Item" or "Add Item"'), collapse.
+	out = re.sub(
+		rf"{re.escape(primary_quoted)}\s*(?:yoki|or|или)\s*{re.escape(primary_quoted)}",
+		primary_quoted,
+		out,
+		flags=re.IGNORECASE,
+	)
 	return out
 
 
