@@ -142,11 +142,9 @@
 
 	function getCommonUiLabels() {
 		const keys = [
-			"New",
-			"Add",
-			"Create",
 			"Save",
 			"Submit",
+			"Add",
 			"Update",
 			"Delete",
 			"Cancel",
@@ -163,7 +161,7 @@
 		for (const key of keys) {
 			const translated = safeTranslate(key);
 			if (!translated) continue;
-			out[key] = translated;
+			if (translated !== key) out[key] = translated;
 		}
 		return out;
 	}

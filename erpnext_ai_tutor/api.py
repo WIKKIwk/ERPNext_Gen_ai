@@ -292,6 +292,51 @@ def _ui_guidance_system_message() -> str:
 	)
 
 
+_NEW_BUTTON_QUOTED_RE = re.compile(r"""(["'`“”])\s*New\s*\1""", re.IGNORECASE)
+_NEW_BUTTON_CONTEXT_RE = re.compile(
+	r"\bNew\b(?=\s*(?:tugma|tugmasi|tugmasini|button|кнопк))",
+	re.IGNORECASE,
+)
+
+
+def _extract_primary_action_label(ctx: Dict[str, Any]) -> str:
+	if not isinstance(ctx, dict):
+		return ""
+	ui = ctx.get("ui")
+	if not isinstance(ui, dict):
+		return ""
+	page_actions = ui.get("page_actions")
+	if not isinstance(page_actions, dict):
+		return ""
+	primary = page_actions.get("primary_action")
+	if isinstance(primary, str) and primary.strip():
+		return _clip_ui_text(primary, limit=80)
+	return ""
+
+
+def _enforce_primary_action_label(reply: str, ctx: Dict[str, Any]) -> str:
+	"""If we know the exact primary action label, prevent generic 'New' guidance."""
+	text = (reply or "").strip()
+	if not text or not isinstance(ctx, dict):
+		return reply or ""
+
+	primary = _extract_primary_action_label(ctx)
+	if not primary:
+		return reply or ""
+
+	# If primary action is literally "New" (some setups), do nothing.
+	if primary.strip().lower() == "new":
+		return reply or ""
+
+	primary_quoted = f"\"{primary}\""
+
+	# Replace quoted "New" first.
+	out = _NEW_BUTTON_QUOTED_RE.sub(primary_quoted, text)
+	# Replace unquoted New in button context.
+	out = _NEW_BUTTON_CONTEXT_RE.sub(primary_quoted, out)
+	return out
+
+
 def _reply_text(key: str, *, lang: str) -> str:
 	lang = _normalize_lang(lang)
 	table = {
@@ -758,6 +803,9 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	messages.append({"role": "user", "content": user_message})
 
 	reply = _call_llm(messages=messages, max_tokens=8192 if troubleshoot else 1024)
+
+	if isinstance(ctx, dict):
+		reply = _enforce_primary_action_label(reply, ctx)
 
 	# Best-effort: if response looks cut off, ask the model to continue once.
 	if troubleshoot and reply and _looks_truncated(reply):
