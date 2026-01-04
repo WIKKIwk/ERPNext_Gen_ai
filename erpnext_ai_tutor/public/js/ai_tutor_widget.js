@@ -162,9 +162,8 @@
 		const out = {};
 		for (const key of keys) {
 			const translated = safeTranslate(key);
-			if (translated && translated !== key) {
-				out[key] = translated;
-			}
+			if (!translated) continue;
+			out[key] = translated;
 		}
 		return out;
 	}
@@ -178,14 +177,24 @@
 			if (!actionsRoot) return null;
 
 			const cleanText = (value) => String(value || "").replace(/\s+/g, " ").trim();
-			const primaryEl = actionsRoot.querySelector(".primary-action, .btn-primary");
-			const primary = primaryEl ? cleanText(primaryEl.textContent) : "";
+			const getLabel = (el) => {
+				if (!el || typeof el.getAttribute !== "function") return "";
+				const attr =
+					el.getAttribute("data-label") ||
+					el.getAttribute("aria-label") ||
+					el.getAttribute("title") ||
+					"";
+				return cleanText(attr) || cleanText(el.textContent);
+			};
+
+			const primaryEl = actionsRoot.querySelector(".primary-action, .btn-primary, [data-label]");
+			const primary = primaryEl ? getLabel(primaryEl) : "";
 
 			const labels = [];
 			const seen = new Set();
 			const candidates = actionsRoot.querySelectorAll("button, a.btn");
 			for (const el of candidates) {
-				const text = cleanText(el.textContent);
+				const text = getLabel(el);
 				if (!text) continue;
 				if (text.length > 48) continue;
 				if (seen.has(text)) continue;
