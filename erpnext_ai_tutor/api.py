@@ -169,17 +169,6 @@ _LANG_REQUEST_UZ_RE = re.compile(
 	re.IGNORECASE,
 )
 
-_CREATE_INTENT_RE = re.compile(
-	r"\b("
-	r"qo['’]sh|qo‘sh|qo`sh|qo\\'sh|qo\\‘sh|qo\\`sh|"
-	r"qo['’]sham(an|iz)?|qo‘sham(an|iz)?|qo`sham(an|iz)?|"
-	r"yarat|yarat(am|ish)|yangi|"
-	r"add|create|new|"
-	r"созда(ть|й)|создание|добав(ить|ь)|добавление"
-	r")\b",
-	re.IGNORECASE,
-)
-
 
 def _normalize_lang(lang: str | None) -> str:
 	raw = (lang or "").strip().lower()
@@ -296,91 +285,10 @@ def _ui_guidance_system_message() -> str:
 	return (
 		"UI GUIDANCE:\n"
 		"- When you instruct the user to click/tap a UI element, use the EXACT label from UI SNAPSHOT.\n"
+		"- If UI SNAPSHOT provides a Primary action button label, prefer it for create/add steps.\n"
+		"- Do NOT call the button \"New\" unless the Primary action label is exactly \"New\".\n"
 		"- If the exact label is not available, describe where it is (e.g., 'top right primary action button') instead of guessing.\n"
 		"- Do not invent translated button names.\n"
-	)
-
-
-def _ui_label(ctx: Dict[str, Any], key: str, *, fallback: str = "") -> str:
-	if not isinstance(ctx, dict):
-		return fallback or key
-	ui = ctx.get("ui")
-	if not isinstance(ui, dict):
-		return fallback or key
-	labels = ui.get("labels")
-	if not isinstance(labels, dict):
-		return fallback or key
-	value = labels.get(key)
-	if isinstance(value, str) and value.strip():
-		return _clip_ui_text(value, limit=80)
-	return fallback or key
-
-
-def _ui_primary_action(ctx: Dict[str, Any]) -> str:
-	if not isinstance(ctx, dict):
-		return ""
-	ui = ctx.get("ui")
-	if not isinstance(ui, dict):
-		return ""
-	page_actions = ui.get("page_actions")
-	if not isinstance(page_actions, dict):
-		return ""
-	primary = page_actions.get("primary_action")
-	if isinstance(primary, str) and primary.strip():
-		return _clip_ui_text(primary, limit=80)
-	return ""
-
-
-def _context_doctype(ctx: Dict[str, Any]) -> str:
-	if not isinstance(ctx, dict):
-		return ""
-	form = ctx.get("form")
-	if isinstance(form, dict):
-		doctype = form.get("doctype")
-		if isinstance(doctype, str) and doctype.strip():
-			return _clip_ui_text(doctype, limit=60)
-
-	route = ctx.get("route")
-	if isinstance(route, list) and len(route) >= 2:
-		first = str(route[0] or "").strip()
-		second = str(route[1] or "").strip()
-		if first.lower() in {"list", "form"} and second:
-			return _clip_ui_text(second, limit=60)
-
-	page_heading = ctx.get("page_heading")
-	if isinstance(page_heading, str) and page_heading.strip() and len(page_heading.strip()) <= 60:
-		return _clip_ui_text(page_heading, limit=60)
-	return ""
-
-
-def _quick_create_help(user_message: str, ctx: Dict[str, Any], *, lang: str) -> str:
-	if not isinstance(ctx, dict):
-		return ""
-	if not _CREATE_INTENT_RE.search(user_message or ""):
-		return ""
-
-	primary = _ui_primary_action(ctx)
-	if not primary:
-		return ""
-
-	doctype = _context_doctype(ctx) or "record"
-	save_label = _ui_label(ctx, "Save", fallback="Save")
-	submit_label = _ui_label(ctx, "Submit", fallback="Submit")
-
-	lang = _normalize_lang(lang)
-	if lang == "ru":
-		return (
-			f'Вы на странице "{doctype}". Чтобы добавить новую запись, нажмите кнопку "{primary}" в правом верхнем углу.\n'
-			f'Затем заполните поля и нажмите "{save_label}" (или "{submit_label}", если требуется).'
-		)
-	if lang == "en":
-		return (
-			f'You are on the "{doctype}" page. To add a new record, click "{primary}" at the top right.\n'
-			f'Then fill the fields and click "{save_label}" (or "{submit_label}" if needed).'
-		)
-	return (
-		f'Siz hozir "{doctype}" sahifasidasiz. Yangi yozuv qo‘shish uchun yuqori o‘ngdagi "{primary}" tugmasini bosing.\n'
-		f"So‘ng kerakli maydonlarni to‘ldirib, \"{save_label}\" (yoki kerak bo‘lsa \"{submit_label}\") tugmasini bosing."
 	)
 
 
@@ -748,11 +656,6 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 
 	if isinstance(ctx, dict) and (_WHERE_AM_I_RE.search(user_message) or _WHICH_FIELD_RE.search(user_message)):
 		return {"ok": True, "reply": _location_llm_reply(user_message, ctx, cfg, fallback_lang=fallback_lang)}
-
-	if isinstance(ctx, dict):
-		quick_create = _quick_create_help(user_message, ctx, lang=lang)
-		if quick_create:
-			return {"ok": True, "reply": quick_create}
 
 	troubleshoot = is_auto or _wants_troubleshooting(user_message, ctx)
 
