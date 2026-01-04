@@ -120,6 +120,106 @@
 		return "";
 	}
 
+	function normalizeLangCode(lang) {
+		const raw = String(lang || "").trim();
+		if (!raw) return "";
+		return raw.replace("_", "-").split("-", 1)[0].toLowerCase();
+	}
+
+	function safeTranslate(text) {
+		const source = String(text || "").trim();
+		if (!source) return "";
+		try {
+			if (typeof __ === "function") {
+				const translated = __(source);
+				return String(translated || source).trim();
+			}
+		} catch {
+			// ignore
+		}
+		return source;
+	}
+
+	function getCommonUiLabels() {
+		const keys = [
+			"New",
+			"Add",
+			"Create",
+			"Save",
+			"Submit",
+			"Update",
+			"Delete",
+			"Cancel",
+			"Close",
+			"Edit",
+			"Yes",
+			"No",
+			"Search",
+			"Filter",
+			"Refresh",
+			"Settings",
+		];
+		const out = {};
+		for (const key of keys) {
+			const translated = safeTranslate(key);
+			if (translated && translated !== key) {
+				out[key] = translated;
+			}
+		}
+		return out;
+	}
+
+	function getPageActionUi() {
+		try {
+			const actionsRoot =
+				document.querySelector(".page-head .page-actions") ||
+				document.querySelector(".page-actions") ||
+				null;
+			if (!actionsRoot) return null;
+
+			const cleanText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+			const primaryEl = actionsRoot.querySelector(".primary-action, .btn-primary");
+			const primary = primaryEl ? cleanText(primaryEl.textContent) : "";
+
+			const labels = [];
+			const seen = new Set();
+			const candidates = actionsRoot.querySelectorAll("button, a.btn");
+			for (const el of candidates) {
+				const text = cleanText(el.textContent);
+				if (!text) continue;
+				if (text.length > 48) continue;
+				if (seen.has(text)) continue;
+				seen.add(text);
+				labels.push(text);
+				if (labels.length >= 12) break;
+			}
+
+			// Remove the primary label from the list if it was captured.
+			const actions = labels.filter((label) => label && label !== primary);
+
+			if (!primary && !actions.length) return null;
+			return {
+				primary_action: primary || "",
+				actions,
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	function getUiSnapshot() {
+		if (!isDesk()) return null;
+		const lang = normalizeLangCode(frappe?.boot?.lang || frappe?.boot?.user?.language || "");
+		const labels = getCommonUiLabels();
+		const page_actions = getPageActionUi();
+		if (!lang && !Object.keys(labels).length && !page_actions) return null;
+		return {
+			language: lang || "",
+			labels,
+			page_actions,
+		};
+	}
+
 	function getFormContext(includeDocValues) {
 		const frm = window.cur_frm;
 		if (!frm || !frm.doctype) return null;
@@ -172,6 +272,8 @@
 			user: frappe.session && frappe.session.user,
 			event: lastEvent || null,
 		};
+		const ui = getUiSnapshot();
+		if (ui) snapshot.ui = ui;
 		if (config?.include_form_context) {
 			snapshot.form = getFormContext(includeDocValues);
 		}
@@ -859,13 +961,15 @@
 			}, 150);
 		}
 
-			async autoHelp(ev) {
-				const lang = String(this.config?.language || "uz").trim().toLowerCase();
-				const replyLang = lang === "ru" ? "Russian" : lang === "en" ? "English" : "Uzbek";
-				const msg = [
-					AUTO_HELP_PREFIX_EN,
-					ev.title ? `Title: ${ev.title}` : null,
-					ev.message ? `Message: ${ev.message}` : null,
+				async autoHelp(ev) {
+					const uiLang = normalizeLangCode(frappe?.boot?.lang || frappe?.boot?.user?.language || "");
+					const cfgLang = normalizeLangCode(this.config?.language || "");
+					const lang = uiLang || cfgLang || "uz";
+					const replyLang = lang === "ru" ? "Russian" : lang === "en" ? "English" : "Uzbek";
+					const msg = [
+						AUTO_HELP_PREFIX_EN,
+						ev.title ? `Title: ${ev.title}` : null,
+						ev.message ? `Message: ${ev.message}` : null,
 					"",
 					`Please explain what this means and give at least 5 concrete steps to fix it on this page. Please reply in ${replyLang}.`,
 				]
