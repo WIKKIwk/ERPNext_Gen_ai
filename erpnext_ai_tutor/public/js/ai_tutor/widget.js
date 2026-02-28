@@ -881,7 +881,7 @@
 				async autoHelp(ev) {
 					const uiLang = normalizeLangCode(frappe?.boot?.lang || frappe?.boot?.user?.language || "");
 					const cfgLang = normalizeLangCode(this.config?.language || "");
-					const lang = uiLang || cfgLang || "uz";
+					const lang = cfgLang || uiLang || "uz";
 					const replyLang = lang === "ru" ? "Russian" : lang === "en" ? "English" : "Uzbek";
 					const msg = [
 						AUTO_HELP_PREFIX_EN,

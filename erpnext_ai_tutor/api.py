@@ -149,10 +149,38 @@ def _location_llm_reply(
 	messages.append({"role": "system", "content": "Current ERPNext page context (summary, sanitized):\n" + summary})
 	messages.append({"role": "user", "content": user_message})
 
-	reply = call_llm(messages=messages, max_tokens=320).strip()
+	try:
+		reply = call_llm(messages=messages, max_tokens=320).strip()
+	except Exception:
+		return location_reply(ctx, lang=lang)
 	if not reply or DISMISSIVE_RE.search(reply):
 		return location_reply(ctx, lang=lang)
 	return reply
+
+
+def _welcome_session_marker() -> str:
+	user = str(getattr(frappe.session, "user", "") or "Guest")
+	last_login = ""
+	if user != "Guest":
+		try:
+			last_login = str(frappe.get_cached_value("User", user, "last_login") or "")
+		except Exception:
+			last_login = ""
+	sid = str(getattr(frappe.session, "sid", "") or "")
+
+	parts = [user]
+	if last_login:
+		parts.append(last_login)
+	if sid and sid != user:
+		parts.append(sid)
+	return "|".join(parts)
+
+
+def _llm_fallback_reply_key(exc: Exception) -> str:
+	msg = str(exc or "").lower()
+	if any(part in msg for part in ("429", "too many requests", "resource_exhausted", "quota", "rate limit")):
+		return "rate_limited"
+	return "provider_unavailable"
 
 
 @frappe.whitelist()
@@ -174,7 +202,7 @@ def get_tutor_config() -> Dict[str, Any]:
 		"config": public_cfg,
 		"ai_ready": ai_ok,
 		"language": default_lang,
-		"welcome_session_marker": str(getattr(frappe.session, "sid", "") or ""),
+		"welcome_session_marker": _welcome_session_marker(),
 	}
 
 
@@ -347,7 +375,13 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		max_tokens = 1024
 	else:
 		max_tokens = 512
-	reply = call_llm(messages=messages, max_tokens=max_tokens)
+	try:
+		reply = call_llm(messages=messages, max_tokens=max_tokens)
+	except Exception as exc:
+		return {
+			"ok": True,
+			"reply": reply_text(_llm_fallback_reply_key(exc), lang=lang, emoji_style=emoji_style),
+		}
 
 	if advanced_mode and isinstance(ctx, dict):
 		reply = enforce_primary_action_label(reply, ctx)

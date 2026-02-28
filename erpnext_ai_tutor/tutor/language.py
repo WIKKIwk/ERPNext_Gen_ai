@@ -132,6 +132,16 @@ def reply_text(key: str, *, lang: str, emoji_style: str = "soft") -> str:
 			"ru": "Сообщение не должно быть пустым.",
 			"en": "Message can't be empty.",
 		},
+		"rate_limited": {
+			"uz": "Hozir AI limiti tugagan (quota/rate limit). Bir ozdan keyin qayta urinib ko'ring yoki AI Settings'da boshqa modelni tanlang.",
+			"ru": "Сейчас достигнут лимит AI (quota/rate limit). Попробуйте снова чуть позже или выберите другую модель в AI Settings.",
+			"en": "AI quota/rate limit is reached right now. Please retry shortly or switch to another model in AI Settings.",
+		},
+		"provider_unavailable": {
+			"uz": "Hozir AI xizmatiga ulanib bo'lmadi. Iltimos birozdan keyin yana urinib ko'ring.",
+			"ru": "Сейчас не удалось подключиться к AI-сервису. Пожалуйста, попробуйте ещё раз чуть позже.",
+			"en": "Couldn't reach the AI service right now. Please try again shortly.",
+		},
 		"continue_request": {
 			"uz": "Davom ettiring va javobni to'liq yakunlang.",
 			"ru": "Продолжите и полностью завершите ответ.",
