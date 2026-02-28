@@ -11,12 +11,14 @@ from frappe.model.document import Document
 @dataclass(frozen=True)
 class TutorConfig:
 	enabled: bool
+	advanced_mode: bool
 	auto_open_on_error: bool
 	auto_open_on_warning: bool
 	include_form_context: bool
 	include_doc_values: bool
 	max_context_kb: int
 	language: str
+	emoji_style: str
 	system_prompt: str
 
 
@@ -34,6 +36,9 @@ Style:
 - Be concise by default.
 - For greetings/thanks/small talk: reply in 1–2 short sentences.
 - For simple questions: answer briefly (max 6 short sentences OR max 5 bullet points).
+- Keep a warm, respectful, and supportive tone.
+- When the user reports a problem, start with a short empathetic acknowledgement, then give practical help.
+- Do not use excessive flattery, roleplay, or too many emojis.
 - Only use the troubleshooting template when:
   a) There is an error/warning, OR
   b) The user explicitly asks for troubleshooting / step-by-step help.
@@ -66,8 +71,18 @@ def _coerce_int(value: Any, default: int) -> int:
 		return default
 
 
+def normalize_emoji_style(value: Any) -> str:
+	raw = str(value or "").strip().lower()
+	if raw in {"off", "soft", "warm"}:
+		return raw
+	return "soft"
+
+
 class AITutorSettings(Document):
 	def validate(self) -> None:
+		if not hasattr(self, "advanced_mode") or getattr(self, "advanced_mode", None) in {None, ""}:
+			self.advanced_mode = 1
+
 		self.max_context_kb = _coerce_int(getattr(self, "max_context_kb", None), 24)
 		if self.max_context_kb < 4:
 			self.max_context_kb = 4
@@ -76,6 +91,7 @@ class AITutorSettings(Document):
 
 		if not getattr(self, "language", None):
 			self.language = "uz"
+		self.emoji_style = normalize_emoji_style(getattr(self, "emoji_style", "soft"))
 
 		if not getattr(self, "system_prompt", None):
 			self.system_prompt = DEFAULT_SYSTEM_PROMPT
@@ -83,9 +99,12 @@ class AITutorSettings(Document):
 	@staticmethod
 	def get_settings() -> "AITutorSettings":
 		doc = frappe.get_single("AI Tutor Settings")
+		if not hasattr(doc, "advanced_mode") or getattr(doc, "advanced_mode", None) in {None, ""}:
+			doc.advanced_mode = 1
 		doc.max_context_kb = _coerce_int(getattr(doc, "max_context_kb", None), 24)
 		if not getattr(doc, "language", None):
 			doc.language = "uz"
+		doc.emoji_style = normalize_emoji_style(getattr(doc, "emoji_style", "soft"))
 		if not getattr(doc, "system_prompt", None):
 			doc.system_prompt = DEFAULT_SYSTEM_PROMPT
 		return doc
@@ -95,12 +114,14 @@ class AITutorSettings(Document):
 		doc = AITutorSettings.get_settings()
 		return TutorConfig(
 			enabled=_coerce_bool(getattr(doc, "enabled", 1)),
+			advanced_mode=_coerce_bool(getattr(doc, "advanced_mode", 1)),
 			auto_open_on_error=_coerce_bool(getattr(doc, "auto_open_on_error", 1)),
 			auto_open_on_warning=_coerce_bool(getattr(doc, "auto_open_on_warning", 1)),
 			include_form_context=_coerce_bool(getattr(doc, "include_form_context", 1)),
 			include_doc_values=_coerce_bool(getattr(doc, "include_doc_values", 1)),
 			max_context_kb=_coerce_int(getattr(doc, "max_context_kb", None), 24),
 			language=str(getattr(doc, "language", "uz") or "uz"),
+			emoji_style=normalize_emoji_style(getattr(doc, "emoji_style", "soft")),
 			system_prompt=str(getattr(doc, "system_prompt", DEFAULT_SYSTEM_PROMPT) or DEFAULT_SYSTEM_PROMPT),
 		)
 
@@ -110,12 +131,14 @@ class AITutorSettings(Document):
 		cfg = AITutorSettings.get_config()
 		return {
 			"enabled": cfg.enabled,
+			"advanced_mode": cfg.advanced_mode,
 			"auto_open_on_error": cfg.auto_open_on_error,
 			"auto_open_on_warning": cfg.auto_open_on_warning,
 			"include_form_context": cfg.include_form_context,
 			"include_doc_values": cfg.include_doc_values,
 			"max_context_kb": cfg.max_context_kb,
 			"language": cfg.language,
+			"emoji_style": cfg.emoji_style,
 		}
 
 

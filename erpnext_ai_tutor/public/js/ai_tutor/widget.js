@@ -3,306 +3,38 @@
 (function () {
 	"use strict";
 
-	const METHOD_GET_CONFIG = "erpnext_ai_tutor.api.get_tutor_config";
-	const METHOD_CHAT = "erpnext_ai_tutor.api.chat";
+	const ns = (window.ERPNextAITutor = window.ERPNextAITutor || {});
+	const u = ns.utils;
+	if (!u) return;
 
-	const STORAGE_VERSION = 1;
-	const STORAGE_KEY_PREFIX = "erpnext_ai_tutor:";
-	const MAX_CONVERSATIONS = 20;
-	const MAX_MESSAGES_PER_CONVERSATION = 200;
-	const AUTO_HELP_COOLDOWN_MS = 45 * 1000;
-	const AUTO_HELP_RATE_WINDOW_MS = 60 * 1000;
-	const AUTO_HELP_RATE_MAX = 3;
-	const AUTO_HELP_FAILURE_COOLDOWN_MS = 2 * 60 * 1000;
-	const AUTO_HELP_PREFIX_UZ = "ERP tizimida xatolik/ogohlantirish chiqdi.";
-	const AUTO_HELP_PREFIX_EN = "ERP system reported an error or warning.";
-
-	const SENSITIVE_KEY_PARTS = [
-		"password",
-		"passwd",
-		"pwd",
-		"token",
-		"secret",
-		"api_key",
-		"apikey",
-		"authorization",
-		"auth",
-		"private_key",
-		"signature",
-	];
-
-	function isDesk() {
-		return typeof frappe !== "undefined" && frappe.session && frappe.get_route;
-	}
-
-	function redactKey(key) {
-		const lower = String(key || "").toLowerCase();
-		return SENSITIVE_KEY_PARTS.some((p) => lower.includes(p));
-	}
-
-	function sanitize(value, depth = 0, maxDepth = 6) {
-		if (depth > maxDepth) return "[truncated]";
-		if (Array.isArray(value)) return value.slice(0, 200).map((v) => sanitize(v, depth + 1, maxDepth));
-		if (value && typeof value === "object") {
-			const out = {};
-			for (const [k, v] of Object.entries(value)) {
-				out[k] = redactKey(k) ? "[redacted]" : sanitize(v, depth + 1, maxDepth);
-			}
-			return out;
-		}
-		if (typeof value === "string" && value.length > 4000) return value.slice(0, 4000) + "…";
-		return value;
-	}
-
-	function stripHtml(html) {
-		try {
-			const div = document.createElement("div");
-			div.innerHTML = String(html || "");
-			return (div.textContent || div.innerText || "").trim();
-		} catch {
-			return String(html || "").trim();
-		}
-	}
-
-	function guessSeverity(indicator) {
-		const s = String(indicator || "").toLowerCase().trim();
-		if (!s) return null;
-		if (s === "red") return "error";
-		if (s === "orange" || s === "yellow") return "warning";
-		return null;
-	}
-
-	function nowTime() {
-		try {
-			return new Date().toLocaleTimeString();
-		} catch {
-			return "";
-		}
-	}
-
-	function formatTime(ts) {
-		try {
-			return new Date(ts).toLocaleTimeString();
-		} catch {
-			return nowTime();
-		}
-	}
-
-	function makeId(prefix = "chat") {
-		const rand = Math.random().toString(16).slice(2, 10);
-		return `${prefix}_${Date.now().toString(16)}_${rand}`;
-	}
-
-	function clip(text, max = 60) {
-		const s = String(text ?? "").replace(/\s+/g, " ").trim();
-		if (!s) return "";
-		if (s.length <= max) return s;
-		return s.slice(0, max - 1) + "…";
-	}
-
-	function getPageHeading() {
-		const selectors = [
-			".page-title .title-text",
-			".page-head .title-text",
-			".page-title h1",
-			".page-head h1",
-			".page-head h3",
-			".page-title",
-		];
-		for (const sel of selectors) {
-			const el = document.querySelector(sel);
-			if (!el) continue;
-			const text = (el.textContent || "").replace(/\s+/g, " ").trim();
-			if (!text) continue;
-			if (text.length > 140) continue;
-			return text;
-		}
-		return "";
-	}
-
-	function normalizeLangCode(lang) {
-		const raw = String(lang || "").trim();
-		if (!raw) return "";
-		return raw.replace("_", "-").split("-", 1)[0].toLowerCase();
-	}
-
-	function safeTranslate(text) {
-		const source = String(text || "").trim();
-		if (!source) return "";
-		try {
-			if (typeof __ === "function") {
-				const translated = __(source);
-				return String(translated || source).trim();
-			}
-		} catch {
-			// ignore
-		}
-		return source;
-	}
-
-	function getCommonUiLabels() {
-		const keys = [
-			"Save",
-			"Submit",
-			"Add",
-			"Update",
-			"Delete",
-			"Cancel",
-			"Close",
-			"Edit",
-			"Yes",
-			"No",
-			"Search",
-			"Filter",
-			"Refresh",
-			"Settings",
-		];
-		const out = {};
-		for (const key of keys) {
-			const translated = safeTranslate(key);
-			if (!translated) continue;
-			if (translated !== key) out[key] = translated;
-		}
-		return out;
-	}
-
-	function getPageActionUi() {
-		try {
-			const currentPage =
-				(frappe && frappe.container && frappe.container.page) ||
-				(window.cur_page && window.cur_page.page) ||
-				null;
-			const actionsRoot =
-				(currentPage && currentPage.querySelector && currentPage.querySelector(".page-actions")) ||
-				document.querySelector(".page-head .page-actions") ||
-				document.querySelector(".page-actions") ||
-				null;
-			if (!actionsRoot) return null;
-
-			const cleanText = (value) => String(value || "").replace(/\s+/g, " ").trim();
-			const getLabel = (el) => {
-				if (!el || typeof el.getAttribute !== "function") return "";
-				const attr =
-					el.getAttribute("data-label") ||
-					el.getAttribute("aria-label") ||
-					el.getAttribute("title") ||
-					"";
-				return cleanText(attr) || cleanText(el.textContent);
-			};
-
-			const primaryEl =
-				actionsRoot.querySelector(".primary-action") ||
-				actionsRoot.querySelector("button.btn-primary, a.btn.btn-primary") ||
-				actionsRoot.querySelector("[data-label]") ||
-				null;
-			const primary = primaryEl ? getLabel(primaryEl) : "";
-
-			const labels = [];
-			const seen = new Set();
-			const candidates = actionsRoot.querySelectorAll("button, a.btn");
-			for (const el of candidates) {
-				const text = getLabel(el);
-				if (!text) continue;
-				if (text.length > 48) continue;
-				if (seen.has(text)) continue;
-				seen.add(text);
-				labels.push(text);
-				if (labels.length >= 12) break;
-			}
-
-			// Remove the primary label from the list if it was captured.
-			const actions = labels.filter((label) => label && label !== primary);
-
-			if (!primary && !actions.length) return null;
-			return {
-				primary_action: primary || "",
-				actions,
-			};
-		} catch {
-			return null;
-		}
-	}
-
-	function getUiSnapshot() {
-		if (!isDesk()) return null;
-		const lang = normalizeLangCode(frappe?.boot?.lang || frappe?.boot?.user?.language || "");
-		const labels = getCommonUiLabels();
-		const page_actions = getPageActionUi();
-		if (!lang && !Object.keys(labels).length && !page_actions) return null;
-		return {
-			language: lang || "",
-			labels,
-			page_actions,
-		};
-	}
-
-	function getFormContext(includeDocValues) {
-		const frm = window.cur_frm;
-		if (!frm || !frm.doctype) return null;
-
-		const ctx = {
-			doctype: frm.doctype,
-			docname: frm.docname,
-			is_new: Boolean(frm.is_new && frm.is_new()),
-			is_dirty: Boolean(frm.is_dirty && frm.is_dirty()),
-		};
-
-		try {
-			const meta = frappe.get_meta(frm.doctype);
-			const requiredMissing = [];
-			if (meta && Array.isArray(meta.fields)) {
-				for (const df of meta.fields) {
-					if (!df || !df.reqd || !df.fieldname) continue;
-					const val = frm.doc ? frm.doc[df.fieldname] : null;
-					const empty =
-						val === null ||
-						val === undefined ||
-						val === "" ||
-						(Array.isArray(val) && val.length === 0);
-					if (empty) requiredMissing.push({ fieldname: df.fieldname, label: df.label || df.fieldname });
-				}
-			}
-			if (requiredMissing.length) ctx.missing_required = requiredMissing.slice(0, 30);
-		} catch {
-			// ignore
-		}
-
-		if (includeDocValues && frm.doc) {
-			ctx.doc = sanitize(frm.doc);
-		}
-		return ctx;
-	}
-
-	function getContextSnapshot(config, lastEvent) {
-		const includeDocValues = Boolean(config?.include_doc_values);
-		const page_heading = getPageHeading();
-		const snapshot = {
-			route: typeof frappe.get_route === "function" ? frappe.get_route() : [],
-			route_str: typeof frappe.get_route_str === "function" ? frappe.get_route_str() : "",
-			page_title: document.title || "",
-			page_heading: page_heading || "",
-			hash: window.location.hash || "",
-			pathname: window.location.pathname || "",
-			search: window.location.search || "",
-			url: window.location.href,
-			user: frappe.session && frappe.session.user,
-			event: lastEvent || null,
-		};
-		const ui = getUiSnapshot();
-		if (ui) snapshot.ui = ui;
-		if (config?.include_form_context) {
-			snapshot.form = getFormContext(includeDocValues);
-		}
-		return sanitize(snapshot);
-	}
-
-	function getStorageKey() {
-		const user = frappe?.session?.user || "Guest";
-		return `${STORAGE_KEY_PREFIX}${window.location.host}:${user}:v${STORAGE_VERSION}`;
-	}
+	const {
+		METHOD_GET_CONFIG,
+		METHOD_CHAT,
+		STORAGE_VERSION,
+		MAX_CONVERSATIONS,
+		MAX_MESSAGES_PER_CONVERSATION,
+		AUTO_HELP_COOLDOWN_MS,
+		AUTO_HELP_RATE_WINDOW_MS,
+		AUTO_HELP_RATE_MAX,
+		AUTO_HELP_FAILURE_COOLDOWN_MS,
+		AUTO_HELP_PREFIX_UZ,
+		AUTO_HELP_PREFIX_EN,
+		isDesk,
+		redactKey,
+		sanitize,
+		stripHtml,
+		guessSeverity,
+		nowTime,
+		formatTime,
+		makeId,
+		clip,
+		normalizeLangCode,
+		getContextSnapshot,
+		getStorageKey,
+	} = u;
 
 	class TutorWidget {
-		constructor() {
+			constructor() {
 			this.config = null;
 			this.aiReady = false;
 			this.isOpen = false;
@@ -327,17 +59,152 @@
 			this.$historyBtn = null;
 			this.$newChatBtn = null;
 			this.$typing = null;
-			this.activeField = null;
-		}
+				this.activeField = null;
+				this.routeKey = this.getRouteKey();
+				this._welcomeShownNoMarker = false;
+			}
 
 		async init() {
 			this.render();
 			this.loadChatState();
 			await this.loadConfig();
-			this.installHooks();
-			this.installContextCapture();
+			if (this.isAdvancedMode()) {
+				this.installHooks();
+				this.installContextCapture();
+			}
+			this.installRouteWatcher();
 			this.ensureConversation();
 			this.renderActiveConversation();
+			this.maybeShowWelcomeMessage();
+		}
+
+		isAdvancedMode() {
+			if (!this.config) return true;
+			return this.config.advanced_mode !== false;
+		}
+
+		getEmojiStyle() {
+			const raw = String(this.config?.emoji_style || "soft").trim().toLowerCase();
+			if (raw === "off" || raw === "soft" || raw === "warm") return raw;
+			return "soft";
+		}
+
+			getWelcomeSessionKey() {
+				const user = frappe?.session?.user || "Guest";
+				const markerRaw = String(
+					this.config?.welcome_session_marker ||
+						frappe?.boot?.user?.last_login ||
+						frappe?.boot?.user?.last_active ||
+						""
+				).trim();
+				if (!markerRaw) return "";
+				const marker = markerRaw.replace(/\s+/g, "_");
+				return `erpnext_ai_tutor_welcome:${window.location.host}:${user}:${marker}:v3`;
+			}
+
+			hasShownWelcomeInSession() {
+				const key = this.getWelcomeSessionKey();
+				if (!key) return this._welcomeShownNoMarker;
+				try {
+					return window.sessionStorage?.getItem(key) === "1";
+				} catch {
+					return false;
+				}
+			}
+
+			markWelcomeShownInSession() {
+				const key = this.getWelcomeSessionKey();
+				if (!key) {
+					this._welcomeShownNoMarker = true;
+					return;
+				}
+				try {
+					window.sessionStorage?.setItem(key, "1");
+				} catch {
+					// ignore
+				}
+			}
+
+		getWelcomeMessage() {
+			const lang = normalizeLangCode(this.config?.language || frappe?.boot?.lang || frappe?.boot?.user?.language || "uz");
+			const style = this.getEmojiStyle();
+			const byLang = {
+				off: {
+					uz: "Assalomu alaykum. Men bugundan boshlab sizning ERPNext yordamchingizman. Xohlagan payt savol bering, birga hal qilamiz.",
+					ru: "Здравствуйте. С этого дня я ваш помощник в ERPNext. Задавайте вопросы в любой момент, решим вместе.",
+					en: "Hello. Starting today, I am your ERPNext assistant. Ask anything anytime, and we will solve it together.",
+				},
+				soft: {
+					uz: "Assalomu alaykum 🙂 Men bugundan boshlab sizning ERPNext yordamchingizman. Xohlagan payt savol bering, birga hal qilamiz.",
+					ru: "Здравствуйте 🙂 С этого дня я ваш помощник в ERPNext. Задавайте вопросы в любой момент, решим вместе.",
+					en: "Hello 🙂 Starting today, I am your ERPNext assistant. Ask anything anytime, and we will solve it together.",
+				},
+				warm: {
+					uz: "Assalomu alaykum 😊 Men bugundan boshlab sizning ERPNext yordamchingizman. Xohlagan payt yozing, hammasini birga hal qilamiz ✨",
+					ru: "Здравствуйте 😊 С этого дня я ваш помощник в ERPNext. Пишите в любой момент, всё решим вместе ✨",
+					en: "Hello 😊 Starting today, I am your ERPNext assistant. Message me anytime, and we will solve everything together ✨",
+				},
+			};
+			const set = byLang[style] || byLang.soft;
+			if (lang === "ru") return set.ru;
+			if (lang === "en") return set.en;
+			return set.uz;
+		}
+
+		maybeShowWelcomeMessage() {
+			if (!this.config?.enabled) return;
+			if (this.hasShownWelcomeInSession()) return;
+			this.ensureConversation();
+			const conv = this.getActiveConversation();
+			if (conv && Array.isArray(conv.messages) && conv.messages.length) {
+				this.newChat({ render: false });
+			}
+			const routeKey = this.routeKey || this.getRouteKey();
+			this.append("assistant", this.getWelcomeMessage(), { route_key: routeKey });
+			this.open();
+			this.markWelcomeShownInSession();
+		}
+
+		getRouteKey() {
+			try {
+				const routeStr = typeof frappe?.get_route_str === "function" ? frappe.get_route_str() : "";
+				if (routeStr) return String(routeStr).trim();
+			} catch {
+				// ignore
+			}
+			const path = String(window.location.pathname || "");
+			const search = String(window.location.search || "");
+			const hash = String(window.location.hash || "");
+			return `${path}${search}${hash}`;
+		}
+
+		onRouteChanged(nextRouteKey) {
+			this.routeKey = nextRouteKey || this.getRouteKey();
+			// Prevent stale page state from leaking into the next request.
+			this.lastEvent = null;
+			this.activeField = null;
+			this.lastAutoHelpKey = "";
+			this.lastAutoHelpAt = 0;
+			this.autoHelpTimestamps = [];
+			this.autoHelpDisabledUntil = 0;
+			this.suppressEventsUntil = 0;
+			this.clearPill();
+		}
+
+		checkRouteChange() {
+			const nextRouteKey = this.getRouteKey();
+			if (!nextRouteKey || nextRouteKey === this.routeKey) return;
+			this.onRouteChanged(nextRouteKey);
+		}
+
+		installRouteWatcher() {
+			if (this._routeWatcherInstalled) return;
+			this._routeWatcherInstalled = true;
+			this.routeKey = this.getRouteKey();
+			const handler = () => this.checkRouteChange();
+			window.addEventListener("hashchange", handler, true);
+			window.addEventListener("popstate", handler, true);
+			this._routeWatchTimer = window.setInterval(handler, 500);
 		}
 
 		render() {
@@ -523,7 +390,7 @@
 			const messages = Array.isArray(conv.messages) ? conv.messages : [];
 			for (const m of messages) {
 				if (!m || !m.role) continue;
-				this.history.push({ role: m.role, content: m.content });
+				this.history.push({ role: m.role, content: m.content, route_key: m.route_key || "" });
 				this.appendToDOM(m.role, m.content, m.ts, { animate: false });
 			}
 			this.$body.scrollTop = this.$body.scrollHeight;
@@ -669,7 +536,7 @@
 				}
 			} catch {
 				// keep defaults
-				this.config = { enabled: true, auto_open_on_error: true, auto_open_on_warning: true, include_form_context: true, include_doc_values: true, max_context_kb: 24 };
+				this.config = { enabled: true, advanced_mode: true, auto_open_on_error: true, auto_open_on_warning: true, include_form_context: true, include_doc_values: true, max_context_kb: 24, emoji_style: "soft" };
 				this.aiReady = false;
 			}
 		}
@@ -863,6 +730,7 @@
 		}
 
 		async handleEvent(ev) {
+			if (!this.isAdvancedMode()) return;
 			const now = Date.now();
 			if ((ev?.source === "msgprint" || ev?.source === "alert") && now < (this.suppressEventsUntil || 0)) {
 				return;
@@ -913,18 +781,19 @@
 			else this.open();
 		}
 
-		append(role, content) {
+		append(role, content, opts = {}) {
 			this.ensureConversation();
 			this.setConversationTitleIfNeeded(role === "user" ? content : "");
 
 			const ts = Date.now();
-			this.history.push({ role, content });
+			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();
+			this.history.push({ role, content, route_key: routeKey });
 			const el = this.appendToDOM(role, content, ts, { animate: true });
 
 			const conv = this.getActiveConversation();
 			if (conv) {
 				if (!Array.isArray(conv.messages)) conv.messages = [];
-				conv.messages.push({ role, content, ts });
+				conv.messages.push({ role, content, ts, route_key: routeKey });
 				conv.updated_at = ts;
 				conv.messages = conv.messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
 				this.pruneChatState();
@@ -932,6 +801,38 @@
 			}
 			this.$body.scrollTop = this.$body.scrollHeight;
 			return el;
+		}
+
+		getScopedHistory(routeKey, maxItems = 20) {
+			const conv = this.getActiveConversation();
+			const messages = Array.isArray(conv?.messages) ? conv.messages : [];
+			const scoped = [];
+			for (let i = messages.length - 1; i >= 0 && scoped.length < maxItems + 1; i--) {
+				const item = messages[i];
+				if (!item || typeof item !== "object") continue;
+				const role = String(item.role || "").trim();
+				const content = String(item.content || "").trim();
+				if (!content || (role !== "user" && role !== "assistant")) continue;
+				const msgRouteKey = String(item.route_key || "").trim();
+				if (!msgRouteKey || msgRouteKey !== routeKey) continue;
+				scoped.push({ role, content });
+			}
+			return scoped.reverse();
+		}
+
+		getCoreHistory(maxItems = 6) {
+			const conv = this.getActiveConversation();
+			const messages = Array.isArray(conv?.messages) ? conv.messages : [];
+			const out = [];
+			for (let i = messages.length - 1; i >= 0 && out.length < maxItems + 1; i--) {
+				const item = messages[i];
+				if (!item || typeof item !== "object") continue;
+				const role = String(item.role || "").trim();
+				const content = String(item.content || "").trim();
+				if (!content || (role !== "user" && role !== "assistant")) continue;
+				out.push({ role, content });
+			}
+			return out.reverse();
 		}
 
 		setMessageStatus(messageEl, status) {
@@ -1004,16 +905,19 @@
 
 		async ask(text, opts = { source: "user" }) {
 			if (this.isBusy) return;
+			this.checkRouteChange();
+			const routeKey = this.routeKey || this.getRouteKey();
+			const advanced = this.isAdvancedMode();
 			this.hideHistory();
-			const userEl = this.append("user", text);
+			const userEl = this.append("user", text, { route_key: routeKey });
 			this.setBusy(true);
 			this.showTyping();
 			this.setMessageStatus(userEl, "sending");
 			this.suppressEventsUntil = Date.now() + 8000;
 			try {
-				const ctx = getContextSnapshot(this.config, this.lastEvent);
-				if (this.activeField) ctx.active_field = sanitize(this.activeField);
-				const history = this.history.slice(-20);
+				const ctx = getContextSnapshot(this.config, advanced ? this.lastEvent : null);
+				if (advanced && this.activeField) ctx.active_field = sanitize(this.activeField);
+				const history = advanced ? this.getScopedHistory(routeKey, 20) : this.getCoreHistory(6);
 				// Remove the message we just appended (current user message) to avoid duplication.
 				if (history.length && history[history.length - 1]?.role === "user") {
 					history.pop();
@@ -1033,7 +937,7 @@
 				}
 				this.hideTyping();
 				this.setMessageStatus(userEl, "sent");
-				this.append("assistant", replyText);
+				this.append("assistant", replyText, { route_key: routeKey });
 			} catch (e) {
 				this.hideTyping();
 				this.setMessageStatus(userEl, "failed");
@@ -1046,7 +950,8 @@
 						"assistant",
 						isEmptyReply
 							? "AI didn't reply. Please try again."
-							: "Couldn't reach AI. Check AI Settings (OpenAI/Gemini API key)."
+							: "Couldn't reach AI. Check AI Settings (OpenAI/Gemini API key).",
+						{ route_key: routeKey }
 					);
 				} finally {
 					this.hideTyping();
@@ -1055,16 +960,5 @@
 		}
 	}
 
-	function boot() {
-		if (!isDesk()) return;
-		if (window.__erpnext_ai_tutor_widget) return;
-		window.__erpnext_ai_tutor_widget = new TutorWidget();
-		window.__erpnext_ai_tutor_widget.init();
-	}
-
-	if (document.readyState === "loading") {
-		document.addEventListener("DOMContentLoaded", boot);
-	} else {
-		boot();
-	}
+	ns.TutorWidget = TutorWidget;
 })();

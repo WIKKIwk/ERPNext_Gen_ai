@@ -47,20 +47,29 @@
  "track_changes": 1,
  "field_order": [
   "enabled",
+  "advanced_mode",
   "auto_open_on_error",
   "auto_open_on_warning",
   "include_form_context",
   "include_doc_values",
   "max_context_kb",
   "language",
+  "emoji_style",
   "system_prompt"
  ],
  "fields": [
+ {
+  "default": "1",
+  "fieldname": "enabled",
+  "fieldtype": "Check",
+  "label": "Enable AI Tutor"
+ },
   {
    "default": "1",
-   "fieldname": "enabled",
+   "fieldname": "advanced_mode",
    "fieldtype": "Check",
-   "label": "Enable AI Tutor"
+   "label": "Enable Advanced Features",
+   "description": "If disabled, tutor runs in simpler core mode (no auto-help hooks or advanced intent rules)."
   },
   {
    "default": "1",
@@ -103,6 +112,14 @@
    "options": "uz\nru\nen"
   },
   {
+   "default": "soft",
+   "fieldname": "emoji_style",
+   "fieldtype": "Select",
+   "label": "Emoji Style",
+   "description": "Controls emotional warmth in replies.",
+   "options": "off\nsoft\nwarm"
+  },
+  {
    "fieldname": "system_prompt",
    "fieldtype": "Code",
    "label": "System Prompt",
@@ -111,4 +128,3 @@
   }
  ]
 }
-
