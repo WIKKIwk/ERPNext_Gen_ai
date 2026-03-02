@@ -84,6 +84,63 @@ def _global_language_system_message(*, lang: str) -> str:
 	)
 
 
+def _get_current_user_role_context() -> Dict[str, Any]:
+	user = str(getattr(frappe.session, "user", "") or "Guest")
+	roles: List[str] = []
+	user_type = ""
+	role_profile = ""
+	if user not in {"", "Guest"}:
+		try:
+			roles = sorted(
+				{
+					str(role).strip()
+					for role in (frappe.get_roles(user) or [])
+					if str(role).strip() and str(role).strip() not in {"All", "Guest"}
+				}
+			)
+		except Exception:
+			roles = []
+		try:
+			row = frappe.db.get_value("User", user, ["user_type", "role_profile_name"], as_dict=True) or {}
+			user_type = str(row.get("user_type") or "").strip()
+			role_profile = str(row.get("role_profile_name") or "").strip()
+		except Exception:
+			user_type = ""
+			role_profile = ""
+	is_admin = user == "Administrator" or "System Manager" in set(roles)
+	return {
+		"user": user,
+		"roles": roles,
+		"user_type": user_type,
+		"role_profile_name": role_profile,
+		"is_admin": is_admin,
+	}
+
+
+def _role_aware_system_message(user_ctx: Dict[str, Any]) -> str:
+	user = str(user_ctx.get("user") or "Guest")
+	roles = user_ctx.get("roles") or []
+	if isinstance(roles, list):
+		role_items = [str(role).strip() for role in roles if str(role).strip()]
+	else:
+		role_items = []
+	roles_text = ", ".join(role_items[:16]) if role_items else "none"
+	user_type = str(user_ctx.get("user_type") or "").strip() or "unknown"
+	role_profile = str(user_ctx.get("role_profile_name") or "").strip() or "none"
+	admin_access = "yes" if bool(user_ctx.get("is_admin")) else "no"
+	return (
+		"ROLE-AWARE POLICY:\n"
+		f"- Current ERP user: {user}\n"
+		f"- User Type: {user_type}\n"
+		f"- Role Profile: {role_profile}\n"
+		f"- Roles: {roles_text}\n"
+		f"- Admin-level access: {admin_access}\n"
+		"- Tailor recommendations to this role set.\n"
+		"- Never suggest bypassing permissions, security checks, or hidden backdoors.\n"
+		"- If an action likely needs a higher role than the user has, explicitly say so and ask to involve System Manager/Administrator."
+	)
+
+
 def _align_form_context_with_route(ctx: Dict[str, Any]) -> Dict[str, Any]:
 	"""Drop stale form context if it doesn't match current Desk route."""
 	if not isinstance(ctx, dict):
@@ -120,7 +177,13 @@ def _align_form_context_with_route(ctx: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _location_llm_reply(
-	user_message: str, ctx: Dict[str, Any], cfg: TutorConfig, *, lang: str, fallback_lang: str
+	user_message: str,
+	ctx: Dict[str, Any],
+	cfg: TutorConfig,
+	*,
+	lang: str,
+	fallback_lang: str,
+	user_ctx: Dict[str, Any] | None = None,
 ) -> str:
 	"""Use the LLM to answer location questions naturally, using provided context."""
 	lang = normalize_lang(lang or fallback_lang)
@@ -135,6 +198,8 @@ def _location_llm_reply(
 	messages.append({"role": "system", "content": language_for_response_system_message(lang=lang, fallback=fallback_lang)})
 	messages.append({"role": "system", "content": _global_language_system_message(lang=lang)})
 	messages.append({"role": "system", "content": _tone_system_message(advanced_mode=True, emoji_style=cfg.emoji_style)})
+	if isinstance(user_ctx, dict):
+		messages.append({"role": "system", "content": _role_aware_system_message(user_ctx)})
 	messages.append(
 		{
 			"role": "system",
@@ -234,6 +299,7 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		raw_ctx = {}
 	ctx = sanitize(raw_ctx)
 	ctx = _align_form_context_with_route(ctx)
+	user_ctx = _get_current_user_role_context()
 
 	is_auto = is_auto_help(user_message) if advanced_mode else False
 	requested_lang = detect_requested_lang(user_message)
@@ -259,7 +325,14 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 
 	if advanced_mode and isinstance(ctx, dict) and WHERE_AM_I_RE.search(user_message):
 		# Prefer LLM for conversational location help, but keep deterministic fallback.
-		reply = _location_llm_reply(user_message, ctx, cfg, lang=lang, fallback_lang=fallback_lang)
+		reply = _location_llm_reply(
+			user_message,
+			ctx,
+			cfg,
+			lang=lang,
+			fallback_lang=fallback_lang,
+			user_ctx=user_ctx,
+		)
 		if not reply or not reply.strip():
 			reply = location_reply(ctx, lang=lang)
 		return {"ok": True, "reply": reply}
@@ -274,6 +347,7 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	messages.append({"role": "system", "content": language_for_response_system_message(lang=lang, fallback=fallback_lang)})
 	messages.append({"role": "system", "content": _global_language_system_message(lang=lang)})
 	messages.append({"role": "system", "content": _tone_system_message(advanced_mode=advanced_mode, emoji_style=emoji_style)})
+	messages.append({"role": "system", "content": _role_aware_system_message(user_ctx)})
 
 	if advanced_mode:
 		ui_snapshot = ui_snapshot_system_message(ctx) if isinstance(ctx, dict) else ""
