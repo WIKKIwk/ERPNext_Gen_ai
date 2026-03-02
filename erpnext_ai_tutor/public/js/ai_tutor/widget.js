@@ -995,15 +995,16 @@
 				if (!replyText) {
 					throw new Error("EMPTY_REPLY");
 				}
-				const guide = this.normalizeGuidePayload(r?.message?.guide);
-				this.hideTyping();
-				this.setMessageStatus(userEl, "sent");
-				this.append("assistant", replyText, { route_key: routeKey, guide });
-				if (guide && this.isGuidedCursorEnabled()) {
-					window.setTimeout(() => {
-						this.runGuidedCursor(guide, { auto: true });
-					}, 280);
-				}
+					const guide = this.normalizeGuidePayload(r?.message?.guide);
+					const autoGuide = r?.message?.auto_guide === true;
+					this.hideTyping();
+					this.setMessageStatus(userEl, "sent");
+					this.append("assistant", replyText, { route_key: routeKey, guide });
+					if (guide && autoGuide && this.isGuidedCursorEnabled()) {
+						window.setTimeout(() => {
+							this.runGuidedCursor(guide, { auto: true });
+						}, 280);
+					}
 			} catch (e) {
 				this.hideTyping();
 				this.setMessageStatus(userEl, "failed");
