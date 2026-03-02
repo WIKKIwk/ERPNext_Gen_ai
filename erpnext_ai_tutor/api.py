@@ -126,10 +126,10 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	if is_greeting_only(user_message):
 		return {"ok": True, "reply": reply_text("greeting", lang=lang, emoji_style=emoji_style)}
 
-	if advanced_mode and is_navigation_lookup(user_message):
-		nav_reply = build_navigation_reply(user_message, lang=lang)
-		if nav_reply:
-			return {"ok": True, "reply": nav_reply}
+	nav_query = bool(advanced_mode and is_navigation_lookup(user_message))
+	nav_hint = ""
+	if nav_query:
+		nav_hint = build_navigation_reply(user_message, lang=lang, strict=True)
 
 	if advanced_mode and isinstance(ctx, dict) and WHICH_FIELD_RE.search(user_message):
 		return {"ok": True, "reply": which_field_reply(ctx, lang=lang)}
@@ -144,8 +144,6 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 			fallback_lang=fallback_lang,
 			user_ctx=user_ctx,
 		)
-		if not reply or not reply.strip():
-			reply = location_reply(ctx, lang=lang)
 		return {"ok": True, "reply": reply}
 
 	if advanced_mode and isinstance(ctx, dict) and WHAT_NEXT_RE.search(user_message):
@@ -169,6 +167,30 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		derived_hints = derived_hints_system_message(ctx) if isinstance(ctx, dict) else ""
 		if derived_hints:
 			messages.append({"role": "system", "content": derived_hints})
+
+	if nav_query:
+		if nav_hint:
+			messages.append(
+				{
+					"role": "system",
+					"content": (
+						"NAVIGATION LOOKUP RESULT (from ERP metadata):\n"
+						f"{nav_hint}\n"
+						"Use this as high-confidence reference, but answer naturally (humanoid style). "
+						"If user asks to navigate, include exact route in backticks and short menu steps."
+					),
+				}
+			)
+		else:
+			messages.append(
+				{
+					"role": "system",
+					"content": (
+						"User is asking where to find/open a module or DocType. "
+						"If exact item is unclear, ask one short clarifying question and offer the closest probable path."
+					),
+				}
+			)
 
 	messages.append(
 		{

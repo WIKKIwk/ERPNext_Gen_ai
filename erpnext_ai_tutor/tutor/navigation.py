@@ -97,7 +97,24 @@ def _extract_candidates(user_message: str) -> List[str]:
 		candidate = " ".join(tokens[:6]).strip()
 		if candidate and candidate not in out:
 			out.append(candidate)
-	return out[:6]
+
+		# Also include focused token groups (bigrams/trigrams) from long sentences.
+		max_groups = 24
+		added = 0
+		for n in (2, 3):
+			if len(tokens) < n:
+				continue
+			for i in range(0, len(tokens) - n + 1):
+				group = " ".join(tokens[i : i + n]).strip()
+				if not group or group in out:
+					continue
+				out.append(group)
+				added += 1
+				if added >= max_groups:
+					break
+			if added >= max_groups:
+				break
+	return out[:30]
 
 
 def _best_doctype_match(candidates: List[str]) -> Dict[str, Any] | None:
@@ -202,7 +219,7 @@ def _workspace_labels_for_doctype(doctype_name: str) -> List[str]:
 	return labels
 
 
-def build_navigation_reply(user_message: str, *, lang: str) -> str:
+def build_navigation_reply(user_message: str, *, lang: str, strict: bool = False) -> str:
 	lang = normalize_lang(lang)
 	candidates = _extract_candidates(user_message)
 	if not candidates:
@@ -261,6 +278,9 @@ def build_navigation_reply(user_message: str, *, lang: str) -> str:
 		if lang == "en":
 			return f"Found module: **{module_name}**. Open: `{route}`."
 		return f"Topdim: **{module_name}** moduli. Ochish: `{route}`."
+
+	if strict:
+		return ""
 
 	if lang == "ru":
 		return "Не смог найти точный раздел. Укажите полное имя DocType (например: Stock Entry, Sales Invoice)."
