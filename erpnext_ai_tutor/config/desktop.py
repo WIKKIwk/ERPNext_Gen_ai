@@ -12,7 +12,7 @@ def get_data():
 			"category": "Modules",
 			"label": "AI Tutor Admin",
 			"color": "#1f2937",
-			"icon": "es-line-question",
+			"icon": "gemini-star",
 			"type": "module",
 			"description": "Admin controls for AI Tutor and provider setup.",
 		}

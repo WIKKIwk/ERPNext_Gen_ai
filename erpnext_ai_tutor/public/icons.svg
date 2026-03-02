@@ -1,0 +1,29 @@
+<svg
+	id="erpnext-ai-tutor-symbols"
+	aria-hidden="true"
+	style="position: absolute; width: 0; height: 0; overflow: hidden;"
+	class="d-block"
+	xmlns="http://www.w3.org/2000/svg"
+>
+	<defs>
+		<linearGradient id="gemini-star-gradient" x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="#4F87FF" />
+			<stop offset="1" stop-color="#7D5CFF" />
+		</linearGradient>
+	</defs>
+
+	<symbol id="icon-gemini-star" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+		<path
+			d="M12 2.5L14.68 9.32L21.5 12L14.68 14.68L12 21.5L9.32 14.68L2.5 12L9.32 9.32L12 2.5Z"
+			fill="url(#gemini-star-gradient)"
+		/>
+		<path
+			d="M18.25 3.75L19.25 6.25L21.75 7.25L19.25 8.25L18.25 10.75L17.25 8.25L14.75 7.25L17.25 6.25L18.25 3.75Z"
+			fill="#A18BFF"
+		/>
+		<path
+			d="M6 15.75L6.65 17.35L8.25 18L6.65 18.65L6 20.25L5.35 18.65L3.75 18L5.35 17.35L6 15.75Z"
+			fill="#7F6AF8"
+		/>
+	</symbol>
+</svg>
