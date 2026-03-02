@@ -36,7 +36,6 @@
 			this.running = false;
 			this.$layer = null;
 			this.$cursor = null;
-			this.$highlight = null;
 			this.$tooltip = null;
 		}
 
@@ -63,16 +62,13 @@
 			this.$layer = document.createElement("div");
 			this.$layer.className = "erpnext-ai-tutor-guide-layer";
 
-			this.$highlight = document.createElement("div");
-			this.$highlight.className = "erpnext-ai-tutor-guide-highlight";
-
 			this.$cursor = document.createElement("div");
 			this.$cursor.className = "erpnext-ai-tutor-guide-cursor";
 
 			this.$tooltip = document.createElement("div");
 			this.$tooltip.className = "erpnext-ai-tutor-guide-tooltip";
 
-			this.$layer.append(this.$highlight, this.$cursor, this.$tooltip);
+			this.$layer.append(this.$cursor, this.$tooltip);
 			document.body.appendChild(this.$layer);
 		}
 
@@ -83,7 +79,6 @@
 			}
 			this.$layer = null;
 			this.$cursor = null;
-			this.$highlight = null;
 			this.$tooltip = null;
 		}
 
@@ -230,15 +225,6 @@
 			this.$tooltip.style.top = `${top}px`;
 		}
 
-		setHighlight(rect) {
-			if (!this.$highlight) return;
-			const pad = 6;
-			this.$highlight.style.left = `${Math.max(0, rect.left - pad)}px`;
-			this.$highlight.style.top = `${Math.max(0, rect.top - pad)}px`;
-			this.$highlight.style.width = `${Math.max(18, rect.width + pad * 2)}px`;
-			this.$highlight.style.height = `${Math.max(18, rect.height + pad * 2)}px`;
-		}
-
 		moveCursorTo(rect, duration = 520) {
 			if (!this.$cursor) return;
 			const x = rect.left + rect.width * 0.5;
@@ -267,7 +253,6 @@
 			await this.sleep(280);
 			if (!this.running || !isVisible(el)) return false;
 			const rect = this.getRect(el);
-			this.setHighlight(rect);
 			this.setTooltip(rect, message);
 			this.moveCursorTo(rect, 560);
 			await this.sleep(640);
