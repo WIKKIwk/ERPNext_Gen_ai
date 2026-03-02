@@ -368,6 +368,10 @@
 	transition: filter 120ms ease, transform 120ms ease, background 120ms ease;
 }
 
+.erpnext-ai-tutor-route-chip.is-target-link {
+	font-weight: 700;
+}
+
 .erpnext-ai-tutor-route-chip:hover {
 	filter: brightness(1.06);
 	text-decoration: none;

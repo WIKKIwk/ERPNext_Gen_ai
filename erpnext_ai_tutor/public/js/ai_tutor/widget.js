@@ -276,13 +276,45 @@
 			window.location.href = cleaned;
 		}
 
-		makeRouteChip(route) {
+		normalizeLabelKey(label) {
+			return String(label || "")
+				.toLowerCase()
+				.replace(/[\u2018\u2019`']/g, "")
+				.replace(/\s+/g, " ")
+				.trim();
+		}
+
+		buildGuideLabelRouteMap(guide) {
+			const map = new Map();
+			if (!guide || typeof guide !== "object") return map;
+			const route = this.normalizeRoutePath(guide.route);
+			if (!route) return map;
+			const target = String(guide.target_label || "").trim();
+			if (target) {
+				map.set(this.normalizeLabelKey(target), route);
+			}
+			const menuPath = Array.isArray(guide.menu_path) ? guide.menu_path : [];
+			if (menuPath.length) {
+				const leaf = String(menuPath[menuPath.length - 1] || "").trim();
+				if (leaf) {
+					map.set(this.normalizeLabelKey(leaf), route);
+				}
+			}
+			return map;
+		}
+
+		makeRouteChip(route, label = "") {
 			const cleaned = this.normalizeRoutePath(route) || String(route || "").trim();
+			const text = String(label || "").trim();
 			const chip = document.createElement("a");
 			chip.className = "erpnext-ai-tutor-route-chip";
 			chip.href = cleaned;
-			chip.textContent = cleaned;
+			chip.textContent = text || cleaned;
 			chip.setAttribute("data-route", cleaned);
+			if (text) {
+				chip.classList.add("is-target-link");
+				chip.title = cleaned;
+			}
 			chip.addEventListener("click", (ev) => {
 				ev.preventDefault();
 				this.navigateToRoute(cleaned);
@@ -290,10 +322,11 @@
 			return chip;
 		}
 
-		appendInlineRich(target, source) {
+		appendInlineRich(target, source, opts = {}) {
 			const value = String(source || "");
 			if (!value) return;
-			const tokenRe = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\/app\/[a-z0-9][a-z0-9\-_/]*)/gi;
+			const labelRouteMap = opts?.labelRouteMap instanceof Map ? opts.labelRouteMap : new Map();
+			const tokenRe = /(\[[^\]\n]+\]\(\/app\/[a-z0-9][a-z0-9\-_/]*\)|`[^`\n]+`|\*\*[^*\n]+\*\*|\/app\/[a-z0-9][a-z0-9\-_/]*)/gi;
 			let lastIndex = 0;
 			let match = null;
 			while ((match = tokenRe.exec(value)) !== null) {
@@ -302,7 +335,16 @@
 				if (index > lastIndex) {
 					target.appendChild(document.createTextNode(value.slice(lastIndex, index)));
 				}
-				if (token.startsWith("`") && token.endsWith("`")) {
+				if (token.startsWith("[") && token.includes("](") && token.endsWith(")")) {
+					const linkMatch = token.match(/^\[([^\]]+)\]\((\/app\/[a-z0-9][a-z0-9\-_/]*)\)$/i);
+					if (linkMatch) {
+						const label = String(linkMatch[1] || "").replace(/\*\*/g, "").trim();
+						const route = String(linkMatch[2] || "").trim();
+						target.appendChild(this.makeRouteChip(route, label || ""));
+					} else {
+						target.appendChild(document.createTextNode(token));
+					}
+				} else if (token.startsWith("`") && token.endsWith("`")) {
 					const codeText = token.slice(1, -1).trim();
 					if (/^\/app\/[a-z0-9][a-z0-9\-_/]*$/i.test(codeText)) {
 						target.appendChild(this.makeRouteChip(codeText));
@@ -312,9 +354,15 @@
 						target.appendChild(code);
 					}
 				} else if (token.startsWith("**") && token.endsWith("**")) {
-					const strong = document.createElement("strong");
-					strong.textContent = token.slice(2, -2).trim();
-					target.appendChild(strong);
+					const labelText = token.slice(2, -2).trim();
+					const route = labelRouteMap.get(this.normalizeLabelKey(labelText));
+					if (route) {
+						target.appendChild(this.makeRouteChip(route, labelText));
+					} else {
+						const strong = document.createElement("strong");
+						strong.textContent = labelText;
+						target.appendChild(strong);
+					}
 				} else if (/^\/app\/[a-z0-9][a-z0-9\-_/]*$/i.test(token)) {
 					target.appendChild(this.makeRouteChip(token));
 				} else {
@@ -327,7 +375,7 @@
 			}
 		}
 
-		renderRichText(target, content) {
+		renderRichText(target, content, opts = {}) {
 			const text = String(content ?? "").replace(/\r\n/g, "\n");
 			const lines = text.split("\n");
 			const bulletRe = /^\s*[\*\-]\s+(.+)$/;
@@ -350,7 +398,7 @@
 						const m = String(lines[i] || "").match(bulletRe);
 						if (!m) break;
 						const li = document.createElement("li");
-						this.appendInlineRich(li, m[1]);
+						this.appendInlineRich(li, m[1], opts);
 						ul.appendChild(li);
 						i += 1;
 					}
@@ -368,7 +416,7 @@
 						const m = String(lines[i] || "").match(orderedRe);
 						if (!m) break;
 						const li = document.createElement("li");
-						this.appendInlineRich(li, m[2]);
+						this.appendInlineRich(li, m[2], opts);
 						ol.appendChild(li);
 						i += 1;
 					}
@@ -379,16 +427,16 @@
 
 				const p = document.createElement("p");
 				while (i < lines.length) {
-					const line = String(lines[i] || "");
-					const lineTrimmed = line.trim();
-					if (!lineTrimmed) break;
-					if (bulletRe.test(line) || orderedRe.test(line)) break;
-					this.appendInlineRich(p, line);
-					i += 1;
-					if (i < lines.length) {
-						const nextLine = String(lines[i] || "");
-						if (nextLine.trim() && !bulletRe.test(nextLine) && !orderedRe.test(nextLine)) {
-							p.appendChild(document.createElement("br"));
+						const line = String(lines[i] || "");
+						const lineTrimmed = line.trim();
+						if (!lineTrimmed) break;
+						if (bulletRe.test(line) || orderedRe.test(line)) break;
+						this.appendInlineRich(p, line, opts);
+						i += 1;
+						if (i < lines.length) {
+							const nextLine = String(lines[i] || "");
+							if (nextLine.trim() && !bulletRe.test(nextLine) && !orderedRe.test(nextLine)) {
+								p.appendChild(document.createElement("br"));
 						}
 					}
 				}
@@ -774,7 +822,17 @@
 			const text = document.createElement("div");
 			text.className = "erpnext-ai-tutor-text";
 			if (role === "assistant") {
-				this.renderRichText(text, String(content ?? ""));
+				const guide = this.normalizeGuidePayload(opts?.guide);
+				const labelRouteMap = this.buildGuideLabelRouteMap(guide);
+				let assistantText = String(content ?? "");
+				if (guide?.target_label && guide?.route) {
+					const target = String(guide.target_label).trim();
+					const token = `**${target}**`;
+					if (target && !assistantText.includes(token)) {
+						assistantText = `${assistantText}\n\n${token}`;
+					}
+				}
+				this.renderRichText(text, assistantText, { labelRouteMap });
 			} else {
 				text.textContent = String(content ?? "");
 			}
