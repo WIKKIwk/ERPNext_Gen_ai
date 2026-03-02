@@ -209,8 +209,8 @@
 			if (!this.$cursor) return;
 			const x = rect.left + rect.width * 0.5;
 			const y = rect.top + Math.min(rect.height * 0.65, 24);
-			const hotspotX = 14;
-			const hotspotY = 4;
+			const hotspotX = 13;
+			const hotspotY = 8;
 			this.$cursor.style.transitionDuration = `${duration}ms`;
 			this.$cursor.style.left = `${Math.max(0, x - hotspotX)}px`;
 			this.$cursor.style.top = `${Math.max(0, y - hotspotY)}px`;

@@ -465,13 +465,13 @@
 
 .erpnext-ai-tutor-guide-cursor {
 	position: fixed;
-	width: 42px;
-	height: 42px;
+	width: 46px;
+	height: 46px;
 	left: 16px;
 	top: 16px;
 	pointer-events: none;
-	transform-origin: 14px 4px;
-	background: url("/assets/erpnext_ai_tutor/images/hand_cursor.svg") center center / contain no-repeat;
+	transform-origin: 13px 8px;
+	background: url("/assets/erpnext_ai_tutor/images/handpointing.svg") center center / contain no-repeat;
 	filter: drop-shadow(0 6px 14px rgba(2, 6, 23, 0.38));
 	transition:
 		left 520ms cubic-bezier(0.2, 0.8, 0.2, 1),
