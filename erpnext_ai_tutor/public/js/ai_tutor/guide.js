@@ -289,6 +289,58 @@
 			});
 		}
 
+		findNavbarHomeButton() {
+			const selectors = [
+				".navbar .navbar-home",
+				".navbar-home",
+				"a.navbar-brand.navbar-home",
+				".navbar-home .app-logo",
+				".navbar-home img",
+			];
+			for (const sel of selectors) {
+				const nodes = document.querySelectorAll(sel);
+				for (const node of nodes) {
+					const el = getClickable(node);
+					if (el && isVisible(el)) return el;
+				}
+			}
+			return null;
+		}
+
+		hasVisibleSidebarRoutes() {
+			const selectors = this.getScopeSelectors("sidebar");
+			for (const sel of selectors) {
+				const nodes = document.querySelectorAll(sel);
+				for (const node of nodes) {
+					const el = getClickable(node);
+					if (!el || !isVisible(el)) continue;
+					const path = this.getCandidatePath(el, node);
+					if (path && path.startsWith("/app/")) return true;
+				}
+			}
+			return false;
+		}
+
+		isAtHomeRoute() {
+			const current = this.normalizePath(window.location.pathname || "");
+			return current === "/app" || current === "/app/home";
+		}
+
+		async openMainMenuFromLogo() {
+			if (!this.running) return false;
+			const homeBtn = this.findNavbarHomeButton();
+			if (!homeBtn) return false;
+			const clicked = await this.focusElement(homeBtn, "Bosh menyuga qaytamiz.", {
+				click: true,
+				skip_scroll: true,
+				duration_ms: 260,
+				pre_click_pause_ms: 110,
+			});
+			if (!clicked) return false;
+			const opened = await this.waitFor(() => this.isAtHomeRoute() || this.hasVisibleSidebarRoutes(), 3400, 110);
+			return Boolean(opened);
+		}
+
 		isCollapsedNode(node) {
 			if (!node || typeof node.getAttribute !== "function") return false;
 			const expanded = String(node.getAttribute("aria-expanded") || "").toLowerCase();
@@ -786,6 +838,19 @@
 			if (!routeMatch) {
 				routeMatch = this.findByRouteCandidate(route, { allowHidden: false });
 			}
+			if (!routeMatch) {
+				const homeOpened = await this.openMainMenuFromLogo();
+				if (homeOpened) {
+					routeMatch = this.findByRouteCandidate(route, { allowHidden: true });
+					if (routeMatch && !routeMatch.visible) {
+						await this.expandCollapsedAncestors(routeMatch.el);
+						await this.sleep(90);
+					}
+					if (!routeMatch) {
+						routeMatch = this.findByRouteCandidate(route, { allowHidden: false });
+					}
+				}
+			}
 			if (routeMatch?.el && isVisible(routeMatch.el)) {
 				await this.focusElement(routeMatch.el, "2-qadam: kerakli bo'lim tugmasini bosamiz.", {
 					click: true,
@@ -872,6 +937,13 @@
 							await this.revealLabel(label);
 							await this.sleep(90);
 							match = this.findStepCandidate(step, { allowHidden: false });
+						}
+						if (!match && String(step.scope || "").trim().toLowerCase() === "sidebar") {
+							const homeOpened = await this.openMainMenuFromLogo();
+							if (homeOpened) {
+								await this.sleep(110);
+								match = await this.waitFor(() => this.findStepCandidate(step, { allowHidden: false }), 2000, 100);
+							}
 						}
 						const el = match?.el || null;
 						if (!el) {
