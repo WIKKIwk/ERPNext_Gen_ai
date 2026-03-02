@@ -306,24 +306,39 @@
 			const moduleLabel = String(menuPath[0] || "").trim();
 			const targetLabel = String(guide.target_label || menuPath[menuPath.length - 1] || moduleLabel || "").trim();
 
-			if (targetLabel) {
+			const pathLabels = [];
+			for (const raw of menuPath) {
+				const label = String(raw || "").trim();
+				if (!label) continue;
+				if (pathLabels[pathLabels.length - 1] === label) continue;
+				pathLabels.push(label);
+			}
+			if (targetLabel && pathLabels[pathLabels.length - 1] !== targetLabel) {
+				pathLabels.push(targetLabel);
+			}
+
+			for (let i = 0; i < pathLabels.length; i += 1) {
+				const label = pathLabels[i];
+				const stepNo = i + 1;
+				const isLast = i === pathLabels.length - 1;
 				steps.push({
 					type: "focus",
-					label: targetLabel,
-					section_label: moduleLabel,
-					message: `1-qadam: avval \"${targetLabel}\" ni to'g'ridan-to'g'ri topib bosamiz.`,
+					label,
+					section_label: i > 0 ? moduleLabel : "",
+					message: `${stepNo}-qadam: "${label}" tugmasini bosamiz.`,
 					click: true,
-					optional: true,
-					timeout_ms: 1000,
-					skip_if_on_route: true,
+					optional: false,
+					timeout_ms: 2200,
+					skip_if_on_route: Boolean(isLast && guide.route),
 				});
 			}
 
-			if (guide.route) {
+			// Fallback route jump only when no clickable path exists in payload.
+			if (!pathLabels.length && guide.route) {
 				steps.push({
 					type: "navigate",
 					route: guide.route,
-					message: `2-qadam: fallback sifatida route orqali ochamiz: ${guide.route}`,
+					message: `Fallback: route orqali ochamiz: ${guide.route}`,
 				});
 			}
 			return steps;
