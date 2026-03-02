@@ -22,16 +22,32 @@ TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 STOPWORDS = {
 	"menga",
+	"ni",
+	"ning",
+	"ga",
+	"da",
+	"dan",
+	"degan",
 	"kerak",
 	"iltimos",
 	"ber",
 	"qismi",
 	"bolimi",
+	"module",
+	"modul",
 	"sahifasi",
 	"qayerda",
 	"qayerdan",
 	"topib",
 	"top",
+	"korsat",
+	"ko'rsat",
+	"ko‘rsat",
+	"korsatib",
+	"ko'rsatib",
+	"ko‘rsatib",
+	"yubor",
+	"ochib",
 	"ekani",
 	"ekanligini",
 	"ekanligi",
@@ -97,6 +113,11 @@ def _extract_candidates(user_message: str) -> List[str]:
 		candidate = " ".join(tokens[:6]).strip()
 		if candidate and candidate not in out:
 			out.append(candidate)
+
+		# Single-token matches are important for workspace/module names (e.g. "support").
+		for token in tokens:
+			if token and token not in out:
+				out.append(token)
 
 		# Also include focused token groups (bigrams/trigrams) from long sentences.
 		max_groups = 24
@@ -195,6 +216,51 @@ def _best_module_match(candidates: List[str]) -> str:
 	return ""
 
 
+def _best_workspace_match(candidates: List[str]) -> Dict[str, str] | None:
+	for cand in candidates:
+		exact = frappe.db.sql(
+			"""
+			select name, label, module
+			from `tabWorkspace`
+			where ifnull(is_hidden, 0)=0
+			  and ifnull(public, 0)=1
+			  and (lower(name)=lower(%s) or lower(label)=lower(%s))
+			limit 1
+			""",
+			(cand, cand),
+			as_dict=True,
+		)
+		if exact:
+			return {
+				"name": str(exact[0].get("name") or "").strip(),
+				"label": str(exact[0].get("label") or "").strip(),
+				"module": str(exact[0].get("module") or "").strip(),
+			}
+
+		like = frappe.db.sql(
+			"""
+			select name, label, module
+			from `tabWorkspace`
+			where ifnull(is_hidden, 0)=0
+			  and ifnull(public, 0)=1
+			  and (lower(name) like %s or lower(label) like %s)
+			order by
+			  case when lower(label) like %s then 0 else 1 end,
+			  length(coalesce(label, name)) asc
+			limit 1
+			""",
+			(f"%{cand}%", f"%{cand}%", f"{cand}%"),
+			as_dict=True,
+		)
+		if like:
+			return {
+				"name": str(like[0].get("name") or "").strip(),
+				"label": str(like[0].get("label") or "").strip(),
+				"module": str(like[0].get("module") or "").strip(),
+			}
+	return None
+
+
 def _workspace_labels_for_doctype(doctype_name: str) -> List[str]:
 	rows = frappe.db.sql(
 		"""
@@ -238,6 +304,20 @@ def build_navigation_plan(user_message: str) -> Dict[str, Any]:
 			"workspace": "",
 		}
 
+	workspace_match = _best_workspace_match(candidates)
+	if workspace_match and not has_specific_doctype_hint:
+		ws_label = str(workspace_match.get("label") or workspace_match.get("name") or "").strip()
+		if ws_label:
+			ws_route = f"/app/{_route_slug(ws_label)}"
+			return {
+				"kind": "workspace",
+				"workspace": ws_label,
+				"module": str(workspace_match.get("module") or "").strip(),
+				"target_label": ws_label,
+				"route": ws_route,
+				"menu_path": [ws_label],
+			}
+
 	doctype = _best_doctype_match(candidates)
 	if doctype:
 		name = str(doctype.get("name") or "").strip()
@@ -273,6 +353,18 @@ def build_navigation_plan(user_message: str) -> Dict[str, Any]:
 			"workspace": "",
 		}
 
+	if workspace_match:
+		ws_label = str(workspace_match.get("label") or workspace_match.get("name") or "").strip()
+		if ws_label:
+			return {
+				"kind": "workspace",
+				"workspace": ws_label,
+				"module": str(workspace_match.get("module") or "").strip(),
+				"target_label": ws_label,
+				"route": f"/app/{_route_slug(ws_label)}",
+				"menu_path": [ws_label],
+			}
+
 	return {}
 
 
@@ -286,6 +378,7 @@ def build_navigation_reply_from_plan(plan: Dict[str, Any], *, lang: str, strict:
 	target_label = str(plan.get("target_label") or "").strip()
 	module_name = str(plan.get("module") or "").strip()
 	doctype_name = str(plan.get("doctype") or "").strip()
+	workspace_name = str(plan.get("workspace") or "").strip()
 	workspace = str(plan.get("workspace") or "").strip()
 
 	if kind == "module" and module_name:
@@ -317,6 +410,22 @@ def build_navigation_reply_from_plan(plan: Dict[str, Any], *, lang: str, strict:
 			base.append(f"Chap menyudagi yo'l: **{module_name} → {doctype_name}**.")
 		if workspace:
 			base.append(f"Workspace: **{workspace}**.")
+		return " ".join(base)
+
+	if kind == "workspace" and workspace_name:
+		if lang == "ru":
+			base = [f"Topdim: **{workspace_name}** workspace.", f"Oching: `{route}`."]
+			if module_name:
+				base.append(f"Modul: **{module_name}**.")
+			return " ".join(base)
+		if lang == "en":
+			base = [f"Found workspace: **{workspace_name}**.", f"Open: `{route}`."]
+			if module_name:
+				base.append(f"Module: **{module_name}**.")
+			return " ".join(base)
+		base = [f"Topdim: **{workspace_name}** workspace.", f"Ochish: `{route}`."]
+		if module_name:
+			base.append(f"Modul: **{module_name}**.")
 		return " ".join(base)
 
 	if strict:
