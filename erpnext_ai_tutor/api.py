@@ -47,6 +47,7 @@ from erpnext_ai_tutor.tutor.ui import (
 )
 from erpnext_ai_tutor.tutor.chat_helpers import (
 	_align_form_context_with_route,
+	_extract_retry_after_seconds,
 	_get_current_user_role_context,
 	_global_language_system_message,
 	_llm_fallback_reply_key,
@@ -328,6 +329,17 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 						"reply": (deterministic_nav_reply.rstrip() + "\n\n" + limit_note).strip(),
 						"guide": guide,
 					}
+		if fallback_key == "rate_limited":
+			retry_after = _extract_retry_after_seconds(exc)
+			reply = reply_text(fallback_key, lang=lang, emoji_style=emoji_style)
+			if retry_after:
+				if lang == "ru":
+					reply = f"{reply}\n\nОжидаемое время повтора: примерно {retry_after} сек."
+				elif lang == "en":
+					reply = f"{reply}\n\nEstimated retry time: about {retry_after} seconds."
+				else:
+					reply = f"{reply}\n\nTaxminiy qayta urinish vaqti: {retry_after} soniya."
+			return {"ok": True, "reply": reply}
 		return {
 			"ok": True,
 			"reply": reply_text(fallback_key, lang=lang, emoji_style=emoji_style),

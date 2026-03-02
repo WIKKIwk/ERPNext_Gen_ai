@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 import frappe
@@ -14,6 +15,9 @@ from erpnext_ai_tutor.tutor.language import (
 	normalize_lang,
 )
 from erpnext_ai_tutor.tutor.llm import call_llm
+
+
+RETRY_AFTER_SECONDS_RE = re.compile(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", re.IGNORECASE)
 
 
 def _tone_system_message(*, advanced_mode: bool, emoji_style: str) -> str:
@@ -218,3 +222,16 @@ def _llm_fallback_reply_key(exc: Exception) -> str:
 		return "rate_limited"
 	return "provider_unavailable"
 
+
+def _extract_retry_after_seconds(exc: Exception) -> int | None:
+	msg = str(exc or "")
+	m = RETRY_AFTER_SECONDS_RE.search(msg)
+	if not m:
+		return None
+	try:
+		seconds = float(m.group(1))
+	except Exception:
+		return None
+	if seconds <= 0:
+		return None
+	return int(seconds) + (0 if seconds.is_integer() else 1)
