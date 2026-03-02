@@ -23,6 +23,7 @@ from erpnext_ai_tutor.tutor.intents import (
 	WHICH_FIELD_RE,
 	is_auto_help,
 	is_greeting_only,
+	is_navigation_lookup,
 	wants_troubleshooting,
 )
 from erpnext_ai_tutor.tutor.language import (
@@ -34,6 +35,7 @@ from erpnext_ai_tutor.tutor.language import (
 	normalize_lang,
 	reply_text,
 )
+from erpnext_ai_tutor.tutor.navigation import build_navigation_reply
 from erpnext_ai_tutor.tutor.llm import call_llm, get_ai_provider_config
 from erpnext_ai_tutor.tutor.ui import (
 	enforce_primary_action_label,
@@ -123,6 +125,11 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 
 	if is_greeting_only(user_message):
 		return {"ok": True, "reply": reply_text("greeting", lang=lang, emoji_style=emoji_style)}
+
+	if advanced_mode and is_navigation_lookup(user_message):
+		nav_reply = build_navigation_reply(user_message, lang=lang)
+		if nav_reply:
+			return {"ok": True, "reply": nav_reply}
 
 	if advanced_mode and isinstance(ctx, dict) and WHICH_FIELD_RE.search(user_message):
 		return {"ok": True, "reply": which_field_reply(ctx, lang=lang)}

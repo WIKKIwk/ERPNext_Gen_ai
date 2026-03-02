@@ -20,7 +20,12 @@ GREETING_ONLY_RE = re.compile(
 )
 
 WHERE_AM_I_RE = re.compile(
-	r"(?:^|\b)(qayerda(man)?|hozir\s+qayer|qaysi\s+(sahifa|qism|bo['’]lim|bo‘lim|joy|yo['’]l|yol|path\w*|route\w*|url\w*)|where\s+am\s+i)(?:\b|$)",
+	r"(?:^|\b)(?:men\s+)?qayerda\s*man(?:\b|$)|(?:^|\b)hozir\s+qayerda\s*man(?:\b|$)|(?:^|\b)qaysi\s+(?:sahifa|qism|bo['’]lim|bo‘lim|joy)da\s*man(?:\b|$)|(?:^|\b)where\s+am\s+i(?:\b|$)",
+	re.IGNORECASE,
+)
+
+NAVIGATION_QUERY_RE = re.compile(
+	r"(?:\b(?:qayerda|qaysi\s+(?:bo['’]lim|bo‘lim|qism)da|qayerdan\s+top|qanday\s+(?:kirsam|ochsam)|where\s+is|how\s+to\s+open)\b)",
 	re.IGNORECASE,
 )
 
@@ -45,6 +50,11 @@ def is_greeting_only(user_message: str) -> bool:
 	return bool(GREETING_ONLY_RE.match(user_message or ""))
 
 
+def is_navigation_lookup(user_message: str) -> bool:
+	text = user_message or ""
+	return bool(NAVIGATION_QUERY_RE.search(text)) and not bool(WHERE_AM_I_RE.search(text))
+
+
 def wants_troubleshooting(user_message: str, ctx: Any) -> bool:
 	if TROUBLE_KEYWORDS_RE.search(user_message or ""):
 		return True
@@ -55,4 +65,3 @@ def wants_troubleshooting(user_message: str, ctx: Any) -> bool:
 			if severity in {"error", "warning"} and ("?" in (user_message or "") or len((user_message or "").strip()) > 30):
 				return True
 	return False
-
