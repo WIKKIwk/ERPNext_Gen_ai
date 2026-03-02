@@ -496,45 +496,52 @@
 
 .erpnext-ai-tutor-guide-cursor {
 	position: fixed;
-	width: 20px;
-	height: 20px;
-	border-radius: 999px;
-	background: linear-gradient(135deg, #60a5fa, #2563eb);
-	box-shadow:
-		0 0 0 3px rgba(255, 255, 255, 0.92),
-		0 10px 24px rgba(37, 99, 235, 0.48);
+	width: 26px;
+	height: 34px;
 	left: 16px;
 	top: 16px;
-	transform: translate(-50%, -50%);
+	pointer-events: none;
+	transform-origin: 3px 2px;
+	filter: drop-shadow(0 7px 16px rgba(2, 6, 23, 0.42));
 	transition:
 		left 520ms cubic-bezier(0.2, 0.8, 0.2, 1),
-		top 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+		top 520ms cubic-bezier(0.2, 0.8, 0.2, 1),
+		filter 220ms ease;
 }
 
+.erpnext-ai-tutor-guide-cursor::before,
 .erpnext-ai-tutor-guide-cursor::after {
 	content: "";
 	position: absolute;
-	left: 5px;
-	top: 5px;
-	width: 8px;
-	height: 8px;
-	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.95);
+	display: block;
+}
+
+.erpnext-ai-tutor-guide-cursor::before {
+	inset: 0;
+	background: #0f172a;
+	clip-path: polygon(4% 0%, 4% 78%, 30% 60%, 45% 100%, 60% 92%, 45% 52%, 84% 52%);
+}
+
+.erpnext-ai-tutor-guide-cursor::after {
+	inset: 2px;
+	background: #ffffff;
+	clip-path: polygon(4% 0%, 4% 78%, 30% 60%, 45% 100%, 60% 92%, 45% 52%, 84% 52%);
 }
 
 .erpnext-ai-tutor-guide-cursor.is-pulse {
 	animation: erpnextAiTutorGuidePulse 360ms ease-out;
+	filter: drop-shadow(0 10px 22px rgba(37, 99, 235, 0.38));
 }
 
 @keyframes erpnextAiTutorGuidePulse {
 	0% {
-		transform: translate(-50%, -50%) scale(1);
+		transform: scale(1);
 	}
 	50% {
-		transform: translate(-50%, -50%) scale(0.82);
+		transform: scale(0.86);
 	}
 	100% {
-		transform: translate(-50%, -50%) scale(1);
+		transform: scale(1);
 	}
 }
 
