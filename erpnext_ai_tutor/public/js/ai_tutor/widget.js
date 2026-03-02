@@ -303,22 +303,50 @@
 			return map;
 		}
 
+		buildGuideRouteLabelMap(guide) {
+			const map = new Map();
+			if (!guide || typeof guide !== "object") return map;
+			const route = this.normalizeRoutePath(guide.route);
+			if (!route) return map;
+			const target = String(guide.target_label || "").trim();
+			if (target) {
+				map.set(route, target);
+			}
+			const menuPath = Array.isArray(guide.menu_path) ? guide.menu_path : [];
+			if (menuPath.length) {
+				const leaf = String(menuPath[menuPath.length - 1] || "").trim();
+				if (leaf && !map.has(route)) {
+					map.set(route, leaf);
+				}
+			}
+			return map;
+		}
+
 		makeRouteChip(route, label = "") {
 			const cleaned = this.normalizeRoutePath(route) || String(route || "").trim();
 			const text = String(label || "").trim();
-			const chip = document.createElement("a");
+			const chip = document.createElement("strong");
 			chip.className = "erpnext-ai-tutor-route-chip";
-			chip.href = cleaned;
 			chip.textContent = text || cleaned;
 			chip.setAttribute("data-route", cleaned);
 			if (text) {
 				chip.classList.add("is-target-link");
 				chip.title = cleaned;
+				chip.setAttribute("role", "link");
+				chip.setAttribute("tabindex", "0");
 			}
-			chip.addEventListener("click", (ev) => {
-				ev.preventDefault();
-				this.navigateToRoute(cleaned);
-			});
+			if (text) {
+				chip.addEventListener("click", (ev) => {
+					ev.preventDefault();
+					this.navigateToRoute(cleaned);
+				});
+				chip.addEventListener("keydown", (ev) => {
+					if (ev.key === "Enter" || ev.key === " ") {
+						ev.preventDefault();
+						this.navigateToRoute(cleaned);
+					}
+				});
+			}
 			return chip;
 		}
 
@@ -326,6 +354,7 @@
 			const value = String(source || "");
 			if (!value) return;
 			const labelRouteMap = opts?.labelRouteMap instanceof Map ? opts.labelRouteMap : new Map();
+			const routeLabelMap = opts?.routeLabelMap instanceof Map ? opts.routeLabelMap : new Map();
 			const tokenRe = /(\[[^\]\n]+\]\(\/app\/[a-z0-9][a-z0-9\-_/]*\)|`[^`\n]+`|\*\*[^*\n]+\*\*|\/app\/[a-z0-9][a-z0-9\-_/]*)/gi;
 			let lastIndex = 0;
 			let match = null;
@@ -340,14 +369,23 @@
 					if (linkMatch) {
 						const label = String(linkMatch[1] || "").replace(/\*\*/g, "").trim();
 						const route = String(linkMatch[2] || "").trim();
-						target.appendChild(this.makeRouteChip(route, label || ""));
+						const normalizedRoute = this.normalizeRoutePath(route);
+						const fromRouteMap = normalizedRoute ? routeLabelMap.get(normalizedRoute) : "";
+						const looksLikeRoute = /^\/app\/[a-z0-9][a-z0-9\-_/]*$/i.test(label);
+						const finalLabel = String(fromRouteMap || (looksLikeRoute ? "" : label) || "").trim();
+						if (finalLabel) {
+							target.appendChild(this.makeRouteChip(route, finalLabel));
+						} else {
+							target.appendChild(document.createTextNode(label || route));
+						}
 					} else {
 						target.appendChild(document.createTextNode(token));
 					}
 				} else if (token.startsWith("`") && token.endsWith("`")) {
 					const codeText = token.slice(1, -1).trim();
-					if (/^\/app\/[a-z0-9][a-z0-9\-_/]*$/i.test(codeText)) {
-						target.appendChild(this.makeRouteChip(codeText));
+					const routeLabel = routeLabelMap.get(this.normalizeRoutePath(codeText) || "");
+					if (routeLabel) {
+						target.appendChild(this.makeRouteChip(codeText, routeLabel));
 					} else {
 						const code = document.createElement("code");
 						code.textContent = codeText;
@@ -364,7 +402,12 @@
 						target.appendChild(strong);
 					}
 				} else if (/^\/app\/[a-z0-9][a-z0-9\-_/]*$/i.test(token)) {
-					target.appendChild(this.makeRouteChip(token));
+					const routeLabel = routeLabelMap.get(this.normalizeRoutePath(token) || "");
+					if (routeLabel) {
+						target.appendChild(this.makeRouteChip(token, routeLabel));
+					} else {
+						target.appendChild(document.createTextNode(token));
+					}
 				} else {
 					target.appendChild(document.createTextNode(token));
 				}
@@ -824,6 +867,7 @@
 			if (role === "assistant") {
 				const guide = this.normalizeGuidePayload(opts?.guide);
 				const labelRouteMap = this.buildGuideLabelRouteMap(guide);
+				const routeLabelMap = this.buildGuideRouteLabelMap(guide);
 				let assistantText = String(content ?? "");
 				if (guide?.target_label && guide?.route) {
 					const target = String(guide.target_label).trim();
@@ -832,7 +876,7 @@
 						assistantText = `${assistantText}\n\n${token}`;
 					}
 				}
-				this.renderRichText(text, assistantText, { labelRouteMap });
+				this.renderRichText(text, assistantText, { labelRouteMap, routeLabelMap });
 			} else {
 				text.textContent = String(content ?? "");
 			}

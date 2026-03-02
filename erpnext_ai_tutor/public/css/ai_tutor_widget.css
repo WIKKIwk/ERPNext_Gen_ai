@@ -360,34 +360,19 @@
 	font-size: inherit;
 	font-weight: 600;
 	line-height: inherit;
-	text-decoration: underline;
-	text-decoration-thickness: 1px;
-	text-underline-offset: 2px;
+	text-decoration: none;
 	vertical-align: baseline;
-	transition: opacity 120ms ease, filter 120ms ease, text-decoration-thickness 120ms ease;
+	transition: opacity 120ms ease, filter 120ms ease;
 }
 
 .erpnext-ai-tutor-route-chip.is-target-link {
 	font-weight: 700;
 	text-decoration: none;
-}
-
-.erpnext-ai-tutor-route-chip:not(.is-target-link) {
-	font-family:
-		ui-monospace,
-		SFMono-Regular,
-		Menlo,
-		Monaco,
-		Consolas,
-		"Liberation Mono",
-		"Courier New",
-		monospace;
-	font-size: 12px;
+	cursor: pointer;
 }
 
 .erpnext-ai-tutor-route-chip:hover {
 	filter: brightness(1.05);
-	text-decoration-thickness: 2px;
 }
 
 .erpnext-ai-tutor-route-chip:focus-visible {
