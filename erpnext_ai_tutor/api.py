@@ -24,6 +24,7 @@ from erpnext_ai_tutor.tutor.intents import (
 	is_auto_help,
 	is_greeting_only,
 	is_navigation_lookup,
+	should_offer_navigation_guide,
 	wants_troubleshooting,
 )
 from erpnext_ai_tutor.tutor.language import (
@@ -130,9 +131,9 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	if is_greeting_only(user_message):
 		return {"ok": True, "reply": reply_text("greeting", lang=lang, emoji_style=emoji_style)}
 
-	nav_query = bool(advanced_mode and is_navigation_lookup(user_message))
-	nav_hint = ""
 	nav_plan: Dict[str, Any] = {}
+	nav_hint = ""
+	nav_query = False
 
 	def _guide_from_nav_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
 		if not isinstance(plan, dict):
@@ -150,8 +151,10 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 			"menu_path": [str(x).strip() for x in menu_path if str(x or "").strip()],
 		}
 
-	if nav_query:
+	if advanced_mode:
 		nav_plan = build_navigation_plan(user_message)
+		nav_query = bool(should_offer_navigation_guide(user_message, nav_plan_exists=bool(nav_plan)))
+	if nav_query:
 		nav_hint = build_navigation_reply_from_plan(nav_plan, lang=lang, strict=True)
 
 	if advanced_mode and isinstance(ctx, dict) and WHICH_FIELD_RE.search(user_message):

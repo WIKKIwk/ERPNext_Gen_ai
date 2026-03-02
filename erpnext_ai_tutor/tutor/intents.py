@@ -29,6 +29,16 @@ NAVIGATION_QUERY_RE = re.compile(
 	re.IGNORECASE,
 )
 
+NAVIGATION_SOFT_VERB_RE = re.compile(
+	r"(?:\b(?:top(?:ib)?\s+ber(?:ing)?|find|locate|go\s*to|open|och(?:ib)?\s+ber|olib\s+bor|navigate|kirsam|kiram(?:an)?|show)\b)",
+	re.IGNORECASE,
+)
+
+NAVIGATION_TARGET_RE = re.compile(
+	r"(?:\b(?:module|modul|doctype|workspace|page|sahifa|bo['’]lim|bo‘lim|qism|menu|list|form)\b)",
+	re.IGNORECASE,
+)
+
 WHICH_FIELD_RE = re.compile(r"\b(qaysi\s+(maydon|field)|qayerini\s+to['’]ldiryapman)\b", re.IGNORECASE)
 
 WHAT_NEXT_RE = re.compile(
@@ -53,6 +63,17 @@ def is_greeting_only(user_message: str) -> bool:
 def is_navigation_lookup(user_message: str) -> bool:
 	text = user_message or ""
 	return bool(NAVIGATION_QUERY_RE.search(text)) and not bool(WHERE_AM_I_RE.search(text))
+
+
+def should_offer_navigation_guide(user_message: str, *, nav_plan_exists: bool = False) -> bool:
+	text = user_message or ""
+	if is_navigation_lookup(text):
+		return True
+	if not text.strip():
+		return False
+	if NAVIGATION_SOFT_VERB_RE.search(text) and (NAVIGATION_TARGET_RE.search(text) or nav_plan_exists):
+		return True
+	return False
 
 
 def wants_troubleshooting(user_message: str, ctx: Any) -> bool:
