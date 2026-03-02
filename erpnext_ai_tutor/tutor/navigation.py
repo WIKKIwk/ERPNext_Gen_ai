@@ -469,14 +469,15 @@ def _plan_for_module(module_name: str) -> Dict[str, Any]:
 
 	workspace = _workspace_for_module(module)
 	if workspace:
-		ws_label = str(workspace.get("label") or workspace.get("name") or "").strip()
+		ws_name = str(workspace.get("name") or "").strip()
+		ws_label = str(workspace.get("label") or ws_name or "").strip()
 		if ws_label:
 			return {
 				"kind": "workspace",
 				"workspace": ws_label,
 				"module": module,
 				"target_label": ws_label,
-				"route": f"/app/{_route_slug(ws_label)}",
+				"route": f"/app/{_route_slug(ws_name or ws_label)}",
 				"menu_path": [ws_label],
 			}
 
@@ -533,9 +534,10 @@ def build_navigation_plan(user_message: str) -> Dict[str, Any]:
 
 	workspace_match = _best_workspace_match(candidates)
 	if workspace_match and not has_specific_doctype_hint:
-		ws_label = str(workspace_match.get("label") or workspace_match.get("name") or "").strip()
+		ws_name = str(workspace_match.get("name") or "").strip()
+		ws_label = str(workspace_match.get("label") or ws_name or "").strip()
 		if ws_label:
-			ws_route = f"/app/{_route_slug(ws_label)}"
+			ws_route = f"/app/{_route_slug(ws_name or ws_label)}"
 			return {
 				"kind": "workspace",
 				"workspace": ws_label,
@@ -574,14 +576,15 @@ def build_navigation_plan(user_message: str) -> Dict[str, Any]:
 		return _plan_for_module(module_name)
 
 	if workspace_match:
-		ws_label = str(workspace_match.get("label") or workspace_match.get("name") or "").strip()
+		ws_name = str(workspace_match.get("name") or "").strip()
+		ws_label = str(workspace_match.get("label") or ws_name or "").strip()
 		if ws_label:
 			return {
 				"kind": "workspace",
 				"workspace": ws_label,
 				"module": str(workspace_match.get("module") or "").strip(),
 				"target_label": ws_label,
-				"route": f"/app/{_route_slug(ws_label)}",
+				"route": f"/app/{_route_slug(ws_name or ws_label)}",
 				"menu_path": [ws_label],
 			}
 

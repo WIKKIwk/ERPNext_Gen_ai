@@ -109,19 +109,25 @@
 			return null;
 		}
 
-		findByLabelCandidate(label, opts = { allowHidden: false }) {
+		findByLabelCandidate(label, opts = {}) {
 			const target = normalizeText(label);
 			if (!target) return null;
 			const allowHidden = Boolean(opts?.allowHidden);
-
-			const selectors = [
-				".desk-sidebar .item-anchor",
-				".desk-sidebar .sidebar-item-label",
-				".desk-sidebar .standard-sidebar-item",
-				".layout-main .widget a[href^='/app/']",
-				".layout-main a[href^='/app/']",
-				"a[href^='/app/']",
-			];
+			const strict = Boolean(opts?.strict);
+			const expectedPath = this.normalizePath(opts?.expected_path || "");
+			const selectors = Array.isArray(opts?.selectors) && opts.selectors.length
+				? opts.selectors
+				: [
+						".desk-sidebar .item-anchor",
+						".desk-sidebar .sidebar-item-label",
+						".desk-sidebar .standard-sidebar-item",
+						".layout-main .widget .link-item",
+						".layout-main [data-route]",
+						".layout-main .widget a[href^='/app/']",
+						".layout-main a[href^='/app/']",
+						"a[href^='/app/']",
+				  ];
+			const minScore = Number(opts?.min_score) > 0 ? Number(opts.min_score) : strict ? 90 : 56;
 
 			let bestVisible = null;
 			let bestVisibleScore = 0;
@@ -145,7 +151,13 @@
 					if (!text) continue;
 
 					let score = 0;
-					if (text === target) score = 100;
+					if (strict) {
+						const textCompact = text.replace(/\s+/g, "");
+						const targetCompact = target.replace(/\s+/g, "");
+						if (text === target) score = 120;
+						else if (textCompact === targetCompact) score = 110;
+						else continue;
+					} else if (text === target) score = 100;
 					else if (text.startsWith(target)) score = 90;
 					else if (text.includes(target)) score = 80;
 					else {
@@ -157,6 +169,21 @@
 						}
 						if (overlap > 0) {
 							score = 40 + overlap * 8;
+						}
+					}
+
+					const candidatePath = this.getCandidatePath(el, node);
+					if (expectedPath) {
+						// When route is known, avoid guessing by label alone.
+						if (!candidatePath && strict) continue;
+						if (candidatePath) {
+							if (candidatePath === expectedPath) {
+								score += 30;
+							} else if (strict) {
+								continue;
+							} else {
+								score -= 40;
+							}
 						}
 					}
 
@@ -172,10 +199,10 @@
 				}
 			}
 
-			if (bestVisible && bestVisibleScore >= 56) {
+			if (bestVisible && bestVisibleScore >= minScore) {
 				return { el: bestVisible, visible: true, score: bestVisibleScore };
 			}
-			if (allowHidden && bestHidden && bestHiddenScore >= 56) {
+			if (allowHidden && bestHidden && bestHiddenScore >= minScore) {
 				return { el: bestHidden, visible: false, score: bestHiddenScore };
 			}
 			return null;
@@ -184,6 +211,82 @@
 		findByLabel(label) {
 			const match = this.findByLabelCandidate(label, { allowHidden: false });
 			return match ? match.el : null;
+		}
+
+		getScopeSelectors(scope) {
+			const mode = String(scope || "").trim().toLowerCase();
+			if (mode === "sidebar") {
+				return [
+					".desk-sidebar .item-anchor[href^='/app/']",
+					".desk-sidebar [data-route]",
+					".desk-sidebar .sidebar-item-label",
+					".desk-sidebar .standard-sidebar-item",
+				];
+			}
+			if (mode === "content") {
+				return [
+					".layout-main .widget .link-item",
+					".layout-main [data-route]",
+					".layout-main .widget a[href^='/app/']",
+					".layout-main a[href^='/app/']",
+				];
+			}
+			return [
+				".desk-sidebar .item-anchor[href^='/app/']",
+				".desk-sidebar [data-route]",
+				".desk-sidebar .sidebar-item-label",
+				".desk-sidebar .standard-sidebar-item",
+				".layout-main .widget .link-item",
+				".layout-main [data-route]",
+				".layout-main .widget a[href^='/app/']",
+				".layout-main a[href^='/app/']",
+				"a[href^='/app/']",
+			];
+		}
+
+		collectVisibleLabels(scope = "any", limit = 6) {
+			const selectors = this.getScopeSelectors(scope);
+			const labels = [];
+			const seen = new Set();
+			for (const sel of selectors) {
+				const nodes = document.querySelectorAll(sel);
+				for (const node of nodes) {
+					const el = getClickable(node);
+					if (!el || !isVisible(el)) continue;
+					const text = normalizeText(
+						el.getAttribute("data-label") ||
+							el.getAttribute("aria-label") ||
+							el.getAttribute("title") ||
+							node.textContent ||
+							el.textContent
+					);
+					if (!text || seen.has(text)) continue;
+					seen.add(text);
+					labels.push(text);
+					if (labels.length >= limit) return labels;
+				}
+			}
+			return labels;
+		}
+
+		findStepCandidate(step, opts = { allowHidden: false }) {
+			const allowHidden = Boolean(opts?.allowHidden);
+			const scope = String(step?.scope || "any").trim();
+			const selectors = this.getScopeSelectors(scope);
+			const route = String(step?.route || "").trim();
+
+			if (route) {
+				const routeMatch = this.findByRouteCandidate(route, { allowHidden, selectors });
+				if (routeMatch) return routeMatch;
+			}
+
+			return this.findByLabelCandidate(step?.label, {
+				allowHidden,
+				selectors,
+				strict: Boolean(step?.strict_label),
+				min_score: step?.strict_label ? 90 : 70,
+				expected_path: route,
+			});
 		}
 
 		isCollapsedNode(node) {
@@ -324,9 +427,12 @@
 				steps.push({
 					type: "focus",
 					label,
+					scope: i === 0 ? "sidebar" : "content",
 					section_label: i > 0 ? moduleLabel : "",
 					message: `${stepNo}-qadam: "${label}" tugmasini bosamiz.`,
 					click: true,
+					strict_label: true,
+					route: isLast ? String(guide.route || "").trim() : "",
 					optional: false,
 					timeout_ms: 2200,
 					skip_if_on_route: Boolean(isLast && guide.route),
@@ -559,16 +665,57 @@
 			}
 		}
 
-		findByRouteCandidate(route, opts = { allowHidden: false }) {
+		routeLikeToPath(raw) {
+			const value = String(raw || "").trim();
+			if (!value) return "";
+			if (value.startsWith("#/app/")) return this.normalizePath(value.slice(1));
+			if (value.startsWith("/app/")) return this.normalizePath(value);
+			if (value.startsWith("app/")) return this.normalizePath(`/${value}`);
+			if (value.startsWith("#")) return this.normalizePath(value.slice(1));
+			if (value.startsWith("/")) return this.normalizePath(value);
+			return this.hrefToPath(value);
+		}
+
+		getCandidatePath(el, node) {
+			const values = [];
+			const push = (x) => {
+				const s = String(x || "").trim();
+				if (s) values.push(s);
+			};
+
+			push(el?.getAttribute?.("href"));
+			push(node?.getAttribute?.("href"));
+			push(el?.getAttribute?.("data-route"));
+			push(node?.getAttribute?.("data-route"));
+			push(el?.getAttribute?.("data-url"));
+			push(node?.getAttribute?.("data-url"));
+			push(el?.dataset?.route);
+			push(node?.dataset?.route);
+			push(el?.dataset?.url);
+			push(node?.dataset?.url);
+
+			for (const raw of values) {
+				const path = this.routeLikeToPath(raw);
+				if (path && path.startsWith("/app/")) return path;
+			}
+			return "";
+		}
+
+		findByRouteCandidate(route, opts = {}) {
 			const targetPath = this.normalizePath(this.routeToPath(route));
 			if (!targetPath) return null;
 			const allowHidden = Boolean(opts?.allowHidden);
-			const selectors = [
-				".desk-sidebar a[href^='/app/']",
-				".layout-main .widget a[href^='/app/']",
-				".layout-main a[href^='/app/']",
-				"a[href^='/app/']",
-			];
+			const selectors = Array.isArray(opts?.selectors) && opts.selectors.length
+				? opts.selectors
+				: [
+						".desk-sidebar a[href^='/app/']",
+						".desk-sidebar [data-route]",
+						".layout-main .widget .link-item",
+						".layout-main [data-route]",
+						".layout-main .widget a[href^='/app/']",
+						".layout-main a[href^='/app/']",
+						"a[href^='/app/']",
+				  ];
 
 			let bestVisible = null;
 			let bestVisibleScore = 0;
@@ -582,16 +729,11 @@
 					if (!el) continue;
 					const visible = isVisible(el);
 					if (!visible && !allowHidden) continue;
-					const href = String(el.getAttribute("href") || node.getAttribute("href") || "").trim();
-					if (!href) continue;
-					const candidatePath = this.hrefToPath(href);
+					const candidatePath = this.getCandidatePath(el, node);
 					if (!candidatePath || !candidatePath.startsWith("/app/")) continue;
 
 					let score = 0;
 					if (candidatePath === targetPath) score = 120;
-					else if (candidatePath.startsWith(targetPath + "/")) score = 110;
-					else if (targetPath.startsWith(candidatePath + "/")) score = 92;
-					else if (candidatePath.includes(targetPath) || targetPath.includes(candidatePath)) score = 76;
 					else continue;
 
 					if (visible) {
@@ -633,7 +775,7 @@
 
 		async navigate(route) {
 			if (!route || !this.running) return;
-			if (this.isAtRoute(route)) return;
+			if (this.isAtRoute(route)) return true;
 
 			let routeMatch = this.findByRouteCandidate(route, { allowHidden: true });
 			if (routeMatch && !routeMatch.visible) {
@@ -651,10 +793,10 @@
 					pre_click_pause_ms: 120,
 				});
 				const openedByClick = await this.waitFor(() => this.isAtRoute(route), 3200, 110);
-				if (openedByClick) return;
+				if (openedByClick) return true;
 			}
 			// Strict learn mode: do not force route jump if no visible clickable path was found.
-			return;
+			return false;
 		}
 
 		findHeading(targetLabel) {
@@ -680,16 +822,33 @@
 			return null;
 		}
 
+		buildFailureMessage(step, guide, reason = "not_found") {
+			const label = String(step?.label || guide?.target_label || "").trim();
+			const scope = String(step?.scope || "any").trim().toLowerCase();
+			const visible = this.collectVisibleLabels(scope || "any", 6);
+			const visibleText = visible.length ? visible.join(", ") : "aniq tugmalar topilmadi";
+
+			if (reason === "not_clickable") {
+				return `Men "${label}" elementini ko'rdim, lekin uni xavfsiz bosib bo'lmadi (yopiq yoki bloklangan). Hozir ko'rinayotgan elementlar: ${visibleText}.`;
+			}
+			if (reason === "not_opened") {
+				return `Men "${label}" tugmasini bosdim, lekin kerakli sahifa ochilmadi. Hozir ko'rinayotgan elementlar: ${visibleText}.`;
+			}
+			return `Men "${label}" tugmasini aniq topa olmadim, shuning uchun noto'g'ri bosishni to'xtatdim. Hozir ko'rinayotgan elementlar: ${visibleText}.`;
+		}
+
 		async run(guideRaw) {
 			const guide = this.normalizeGuide(guideRaw);
-			if (!guide) return;
+			if (!guide) return { ok: false, message: "Guide payload noto'g'ri." };
 			this.stop();
 			this.running = true;
 			this.createLayer();
+			let result = { ok: true, message: "" };
 
 			try {
 				const steps = this.buildSteps(guide);
-				for (const step of steps) {
+				for (let i = 0; i < steps.length; i += 1) {
+					const step = steps[i];
 					if (!this.running) break;
 					if (step.type === "focus") {
 						if (step.skip_if_on_route && this.isAtRoute(guide.route)) {
@@ -698,32 +857,66 @@
 						const label = String(step.label || "").trim();
 						if (!label) continue;
 						const timeoutMs = Number(step.timeout_ms) > 0 ? Number(step.timeout_ms) : step.optional ? 900 : 2600;
-						let el = await this.waitFor(() => this.findByLabel(label), timeoutMs, 100);
-						if (!el && step.section_label) {
+						let match = await this.waitFor(() => this.findStepCandidate(step, { allowHidden: false }), timeoutMs, 100);
+						if (!match && step.section_label) {
 							await this.ensureSidebarSectionOpen(step.section_label);
 							await this.sleep(90);
-							el = this.findByLabel(label);
+							match = this.findStepCandidate(step, { allowHidden: true }) || match;
+							if (match && !match.visible) {
+								await this.expandCollapsedAncestors(match.el);
+								await this.sleep(90);
+								match = this.findStepCandidate(step, { allowHidden: false });
+							}
 						}
-						if (!el) {
+						if (!match) {
 							await this.revealLabel(label);
 							await this.sleep(90);
-							el = this.findByLabel(label);
+							match = this.findStepCandidate(step, { allowHidden: false });
 						}
-							if (!el) {
-								if (!step.optional) {
-									await this.sleep(260);
-									break;
-								}
-								continue;
+						const el = match?.el || null;
+						if (!el) {
+							if (!step.optional) {
+								result = {
+									ok: false,
+									message: this.buildFailureMessage(step, guide, "not_found"),
+								};
+								break;
 							}
+							continue;
+						}
 						const clicked = await this.focusElement(el, step.message, { click: Boolean(step.click) });
-						if (clicked && step.click && guide.route) {
-							await this.waitFor(() => this.isAtRoute(guide.route), 1800, 110);
+						if (step.click && !clicked) {
+							if (!step.optional) {
+								result = {
+									ok: false,
+									message: this.buildFailureMessage(step, guide, "not_clickable"),
+								};
+								break;
+							}
+							continue;
+						}
+						if (clicked && step.click && step.route) {
+							const opened = await this.waitFor(() => this.isAtRoute(step.route), 2200, 110);
+							const isLast = i === steps.length - 1;
+							if (!opened && isLast) {
+								result = {
+									ok: false,
+									message: this.buildFailureMessage(step, guide, "not_opened"),
+								};
+								break;
+							}
 						}
 						continue;
 					}
 					if (step.type === "navigate") {
-						await this.navigate(step.route);
+						const opened = await this.navigate(step.route);
+						if (!opened) {
+							result = {
+								ok: false,
+								message: `Men "${step.route}" uchun bosiladigan tugmani topa olmadim. Layout yoki ruxsatni tekshiring.`,
+							};
+							break;
+						}
 						continue;
 					}
 					if (step.type === "confirm") {
@@ -733,10 +926,11 @@
 						}
 					}
 				}
-				await this.sleep(800);
+				await this.sleep(420);
 			} finally {
 				this.stop();
 			}
+			return result;
 		}
 	}
 

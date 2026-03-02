@@ -114,7 +114,14 @@
 		async runGuidedCursor(guide, opts = { auto: false }) {
 			if (!guide || !this.isGuidedCursorEnabled() || !this.guideRunner) return;
 			try {
-				await this.guideRunner.run(guide);
+				const runResult = await this.guideRunner.run(guide);
+				if (!runResult?.ok && !opts?.auto) {
+					this.append(
+						"assistant",
+						String(runResult?.message || "Yo'riqnoma bajarilmadi. Sahifani tekshirib qayta urinib ko'ring."),
+						{ route_key: this.routeKey || this.getRouteKey() }
+					);
+				}
 			} catch {
 				if (!opts?.auto) {
 					this.append(
