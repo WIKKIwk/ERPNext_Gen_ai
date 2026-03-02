@@ -25,12 +25,12 @@ app_license = "Apache-2.0"
 # ------------------
 
 # include js, css files in header of desk.html
-app_include_css = "/assets/erpnext_ai_tutor/css/ai_tutor_widget.css?v=28"
+app_include_css = "/assets/erpnext_ai_tutor/css/ai_tutor_widget.css?v=29"
 app_include_js = [
-	"/assets/erpnext_ai_tutor/js/ai_tutor/utils.js?v=28",
-	"/assets/erpnext_ai_tutor/js/ai_tutor/guide.js?v=28",
-	"/assets/erpnext_ai_tutor/js/ai_tutor/widget.js?v=28",
-	"/assets/erpnext_ai_tutor/js/ai_tutor/boot.js?v=28",
+	"/assets/erpnext_ai_tutor/js/ai_tutor/utils.js?v=29",
+	"/assets/erpnext_ai_tutor/js/ai_tutor/guide.js?v=29",
+	"/assets/erpnext_ai_tutor/js/ai_tutor/widget.js?v=29",
+	"/assets/erpnext_ai_tutor/js/ai_tutor/boot.js?v=29",
 ]
 app_include_icons = ["erpnext_ai_tutor/icons.svg"]
 

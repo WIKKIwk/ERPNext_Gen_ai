@@ -13,10 +13,6 @@
 			.trim();
 	}
 
-	function clamp(value, min, max) {
-		return Math.max(min, Math.min(max, value));
-	}
-
 	function getClickable(el) {
 		if (!el || typeof el.closest !== "function") return null;
 		return el.closest("a, button, [role='button'], .desk-sidebar-item, .link-item") || el;
@@ -36,7 +32,6 @@
 			this.running = false;
 			this.$layer = null;
 			this.$cursor = null;
-			this.$tooltip = null;
 		}
 
 		normalizeGuide(raw) {
@@ -65,10 +60,7 @@
 			this.$cursor = document.createElement("div");
 			this.$cursor.className = "erpnext-ai-tutor-guide-cursor";
 
-			this.$tooltip = document.createElement("div");
-			this.$tooltip.className = "erpnext-ai-tutor-guide-tooltip";
-
-			this.$layer.append(this.$cursor, this.$tooltip);
+			this.$layer.append(this.$cursor);
 			document.body.appendChild(this.$layer);
 		}
 
@@ -79,7 +71,6 @@
 			}
 			this.$layer = null;
 			this.$cursor = null;
-			this.$tooltip = null;
 		}
 
 		sleep(ms) {
@@ -169,24 +160,24 @@
 		buildSteps(guide) {
 			const steps = [];
 			const menuPath = Array.isArray(guide.menu_path) ? guide.menu_path : [];
-			if (menuPath[0]) {
-				steps.push({
-					type: "focus",
-					label: menuPath[0],
-					message: `1-qadam: chap menyudan \"${menuPath[0]}\" ni toping.`,
-					click: true,
-					optional: true,
-				});
-			}
-			if (menuPath[1]) {
-				steps.push({
-					type: "focus",
-					label: menuPath[1],
-					message: `2-qadam: \"${menuPath[1]}\" bo'limini oching.`,
-					click: true,
-					optional: true,
-				});
-			}
+				if (menuPath[0]) {
+					steps.push({
+						type: "focus",
+						label: menuPath[0],
+						message: `1-qadam: chap menyudan \"${menuPath[0]}\" ni toping.`,
+						click: false,
+						optional: true,
+					});
+				}
+				if (menuPath[1]) {
+					steps.push({
+						type: "focus",
+						label: menuPath[1],
+						message: `2-qadam: \"${menuPath[1]}\" bo'limini oching.`,
+						click: false,
+						optional: true,
+					});
+				}
 			if (guide.route) {
 				steps.push({
 					type: "navigate",
@@ -212,17 +203,6 @@
 				right: rect.right,
 				bottom: rect.bottom,
 			};
-		}
-
-		setTooltip(rect, text) {
-			if (!this.$tooltip) return;
-			this.$tooltip.textContent = String(text || "");
-			const tooltipWidth = 320;
-			const left = clamp(rect.left, 12, Math.max(12, window.innerWidth - tooltipWidth - 12));
-			const aboveTop = rect.top - 52;
-			const top = aboveTop > 12 ? aboveTop : rect.bottom + 10;
-			this.$tooltip.style.left = `${left}px`;
-			this.$tooltip.style.top = `${top}px`;
 		}
 
 		moveCursorTo(rect, duration = 520) {
@@ -253,7 +233,6 @@
 			await this.sleep(280);
 			if (!this.running || !isVisible(el)) return false;
 			const rect = this.getRect(el);
-			this.setTooltip(rect, message);
 			this.moveCursorTo(rect, 560);
 			await this.sleep(640);
 			if (opts.click) {

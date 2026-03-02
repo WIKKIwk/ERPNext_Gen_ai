@@ -463,23 +463,6 @@
 	z-index: 2147483000;
 }
 
-.erpnext-ai-tutor-guide-tooltip {
-	position: fixed;
-	max-width: min(320px, calc(100vw - 24px));
-	padding: 8px 10px;
-	border-radius: 10px;
-	border: 1px solid rgba(59, 130, 246, 0.55);
-	background: rgba(15, 23, 42, 0.94);
-	color: rgba(255, 255, 255, 0.96);
-	font-size: 12px;
-	font-weight: 600;
-	line-height: 1.35;
-	box-shadow: 0 12px 36px rgba(2, 6, 23, 0.45);
-	transition:
-		left 220ms ease,
-		top 220ms ease;
-}
-
 .erpnext-ai-tutor-guide-cursor {
 	position: fixed;
 	width: 26px;
@@ -682,7 +665,6 @@
 	.erpnext-ai-tutor-input,
 	.erpnext-ai-tutor-send,
 	.erpnext-ai-tutor-guide-btn,
-	.erpnext-ai-tutor-guide-tooltip,
 	.erpnext-ai-tutor-guide-cursor {
 		animation: none !important;
 		transition: none !important;
