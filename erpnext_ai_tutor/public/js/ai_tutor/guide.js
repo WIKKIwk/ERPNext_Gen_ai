@@ -337,11 +337,6 @@
 					message: `3-qadam: oxirgi fallback sifatida route orqali ochamiz: ${guide.route}`,
 				});
 			}
-			steps.push({
-				type: "confirm",
-				label: targetLabel,
-				message: "Tayyor: mana shu kerakli sahifa.",
-			});
 			return steps;
 		}
 
