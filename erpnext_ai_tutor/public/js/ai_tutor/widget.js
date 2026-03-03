@@ -39,6 +39,8 @@
 	const INPUT_MIN_HEIGHT = 38;
 	const INPUT_MAX_HEIGHT = 160;
 	const DRAWER_CLOSE_ANIM_MS = 280;
+	const TYPEWRITER_MIN_MS = 10;
+	const TYPEWRITER_MAX_MS = 26;
 	const ICONS = Object.freeze({
 		fab: `
 			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
@@ -1433,6 +1435,125 @@
 			return el;
 		}
 
+		delay(ms) {
+			return new Promise((resolve) => {
+				window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+			});
+		}
+
+		shouldAnimateAssistantReply(content) {
+			const text = String(content || "");
+			if (!text.trim()) return false;
+			try {
+				if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+					return false;
+				}
+			} catch {
+				// ignore
+			}
+			return true;
+		}
+
+		buildAssistantContent(content, guide) {
+			const normalizedGuide = this.normalizeGuidePayload(guide);
+			const labelRouteMap = this.buildGuideLabelRouteMap(normalizedGuide);
+			const routeLabelMap = this.buildGuideRouteLabelMap(normalizedGuide);
+			let assistantText = String(content ?? "");
+			if (normalizedGuide?.target_label && normalizedGuide?.route) {
+				const target = String(normalizedGuide.target_label).trim();
+				const token = `**${target}**`;
+				if (target && !assistantText.includes(token)) {
+					assistantText = `${assistantText}\n\n${token}`;
+				}
+			}
+			return { assistantText, normalizedGuide, labelRouteMap, routeLabelMap };
+		}
+
+		renderAssistantRichText(target, content, guide) {
+			if (!target) return;
+			const payload = this.buildAssistantContent(content, guide);
+			target.innerHTML = "";
+			this.renderRichText(target, payload.assistantText, {
+				labelRouteMap: payload.labelRouteMap,
+				routeLabelMap: payload.routeLabelMap,
+			});
+		}
+
+		appendGuideActionIfNeeded(wrap, guide) {
+			if (!wrap) return;
+			const normalizedGuide = this.normalizeGuidePayload(guide);
+			if (!normalizedGuide || !this.isGuidedCursorEnabled()) return;
+			const bubble = wrap.querySelector(".erpnext-ai-tutor-bubble");
+			if (!bubble) return;
+			if (bubble.querySelector(".erpnext-ai-tutor-message-actions")) return;
+			const actions = document.createElement("div");
+			actions.className = "erpnext-ai-tutor-message-actions";
+			const guideBtn = document.createElement("button");
+			guideBtn.type = "button";
+			guideBtn.className = "erpnext-ai-tutor-guide-btn";
+			guideBtn.textContent = "Ko'rsatib ber";
+			guideBtn.addEventListener("click", () => {
+				this.runGuidedCursor(normalizedGuide, { auto: false });
+			});
+			actions.appendChild(guideBtn);
+			bubble.appendChild(actions);
+		}
+
+		async appendAssistantWithTypingEffect(content, opts = {}) {
+			this.ensureConversation();
+			const ts = Date.now();
+			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();
+			const guide = this.normalizeGuidePayload(opts?.guide);
+			const finalText = String(content ?? "");
+
+			this.history.push({ role: "assistant", content: finalText, route_key: routeKey, guide });
+			const wrap = this.appendToDOM("assistant", "", ts, { animate: true, guide: null });
+
+			const conv = this.getActiveConversation();
+			if (conv) {
+				if (!Array.isArray(conv.messages)) conv.messages = [];
+				conv.messages.push({ role: "assistant", content: finalText, ts, route_key: routeKey, guide });
+				conv.updated_at = ts;
+				conv.messages = conv.messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
+				this.pruneChatState();
+				this.saveChatState();
+			}
+
+			const textEl = wrap?.querySelector?.(".erpnext-ai-tutor-text");
+			if (!textEl) {
+				this.$body.scrollTop = this.$body.scrollHeight;
+				return wrap;
+			}
+
+			if (!this.shouldAnimateAssistantReply(finalText)) {
+				this.renderAssistantRichText(textEl, finalText, guide);
+				this.appendGuideActionIfNeeded(wrap, guide);
+				this.$body.scrollTop = this.$body.scrollHeight;
+				return wrap;
+			}
+
+			const chars = Array.from(finalText);
+			const total = chars.length;
+			const chunkSize = total > 800 ? 10 : total > 400 ? 7 : total > 200 ? 5 : 3;
+			const delayMs = Math.max(
+				TYPEWRITER_MIN_MS,
+				Math.min(TYPEWRITER_MAX_MS, Math.floor(2200 / Math.max(1, Math.ceil(total / chunkSize))))
+			);
+
+			textEl.classList.add("is-typewriting");
+			for (let i = 0; i < total; i += chunkSize) {
+				const shown = chars.slice(0, Math.min(total, i + chunkSize)).join("");
+				textEl.textContent = shown;
+				this.$body.scrollTop = this.$body.scrollHeight;
+				await this.delay(delayMs);
+			}
+			this.renderAssistantRichText(textEl, finalText, guide);
+			textEl.classList.remove("is-typewriting");
+			this.appendGuideActionIfNeeded(wrap, guide);
+			this.$body.scrollTop = this.$body.scrollHeight;
+			return wrap;
+		}
+
 		getScopedHistory(routeKey, maxItems = 20) {
 			const conv = this.getActiveConversation();
 			const messages = Array.isArray(conv?.messages) ? conv.messages : [];
@@ -1572,7 +1693,7 @@
 					const autoGuide = r?.message?.auto_guide === true;
 					this.hideTyping();
 					this.setMessageStatus(userEl, "sent");
-					this.append("assistant", replyText, { route_key: routeKey, guide });
+					await this.appendAssistantWithTypingEffect(replyText, { route_key: routeKey, guide });
 					if (guide && autoGuide && this.isGuidedCursorEnabled()) {
 						window.setTimeout(() => {
 							this.runGuidedCursor(guide, { auto: true });
