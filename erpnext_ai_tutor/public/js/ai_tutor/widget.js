@@ -2022,6 +2022,82 @@
 			await this.ask(text, { source: "user" });
 		}
 
+		extractCallErrorText(err) {
+			const picks = [];
+			const push = (value) => {
+				const text = String(value || "").replace(/\s+/g, " ").trim();
+				if (!text) return;
+				if (!picks.includes(text)) picks.push(text);
+			};
+
+			push(err?.message);
+			push(err?.responseJSON?._error_message);
+
+			const status = Number(err?.xhr?.status || err?.status || err?.httpStatus || 0);
+			if (status) push(`HTTP ${status}`);
+
+			const serverMessages = err?._server_messages || err?.responseJSON?._server_messages;
+			if (typeof serverMessages === "string" && serverMessages.trim()) {
+				try {
+					const outer = JSON.parse(serverMessages);
+					if (Array.isArray(outer)) {
+						for (const row of outer) {
+							let text = row;
+							if (typeof row === "string") {
+								try {
+									const inner = JSON.parse(row);
+									text = inner?.message || inner?._error_message || row;
+								} catch {
+									text = row;
+								}
+							}
+							push(typeof text === "string" ? text : text?.message);
+						}
+					}
+				} catch {
+					push(serverMessages);
+				}
+			}
+
+			const exception = String(err?.responseJSON?.exception || "").trim();
+			if (exception) {
+				const firstLine = exception.split("\n")[0];
+				push(firstLine);
+			}
+
+			const detail = String(picks[0] || "");
+			return detail.length > 220 ? `${detail.slice(0, 220)}...` : detail;
+		}
+
+		isTransientCallError(err) {
+			const status = Number(err?.xhr?.status || err?.status || err?.httpStatus || 0);
+			if (status === 0 || status === 408 || status === 429 || status >= 500) return true;
+			const msg = String(err?.message || "").toLowerCase();
+			return (
+				msg.includes("network") ||
+				msg.includes("timeout") ||
+				msg.includes("failed to fetch") ||
+				msg.includes("temporarily")
+			);
+		}
+
+		async callChatWithRetry(payload) {
+			let lastErr = null;
+			for (let attempt = 0; attempt < 2; attempt++) {
+				try {
+					return await frappe.call(METHOD_CHAT, payload);
+				} catch (err) {
+					lastErr = err;
+					if (attempt === 0 && this.isTransientCallError(err)) {
+						await new Promise((resolve) => setTimeout(resolve, 420));
+						continue;
+					}
+					throw err;
+				}
+			}
+			throw lastErr || new Error("CHAT_CALL_FAILED");
+		}
+
 		async ask(text, opts = { source: "user" }) {
 			if (this.isBusy) return;
 			this.checkRouteChange();
@@ -2041,7 +2117,7 @@
 				if (history.length && history[history.length - 1]?.role === "user") {
 					history.pop();
 				}
-				const r = await frappe.call(METHOD_CHAT, {
+				const r = await this.callChatWithRetry({
 					message: text,
 					context: ctx,
 					history,
@@ -2068,6 +2144,8 @@
 				this.hideTyping();
 				this.setMessageStatus(userEl, "failed");
 				const isEmptyReply = String(e?.message || "") === "EMPTY_REPLY";
+				const errorDetail = this.extractCallErrorText(e);
+				console.error("AI Tutor ask() failed", e);
 				if (opts?.source === "auto") {
 					this.autoHelpDisabledUntil = Date.now() + AUTO_HELP_FAILURE_COOLDOWN_MS;
 					return;
@@ -2076,7 +2154,9 @@
 						"assistant",
 						isEmptyReply
 							? "AI didn't reply. Please try again."
-							: "Couldn't reach AI. Check AI Settings (OpenAI/Gemini API key).",
+							: errorDetail
+								? `Couldn't reach AI (${errorDetail}).`
+								: "Couldn't reach AI. Check AI Settings (OpenAI/Gemini API key).",
 						{ route_key: routeKey }
 					);
 				} finally {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, List
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -188,16 +189,36 @@ def _call_gemini_direct(*, api_key: str, model: str, messages: List[dict], token
 		f"https://generativelanguage.googleapis.com/v1beta/{quote(model_path, safe='/')}:generateContent"
 		f"?key={api_key}"
 	)
-	resp = _http_post_json(url=url, payload=payload, headers={}, timeout=60)
-	text = _extract_gemini_text(resp)
-	if text:
-		return text
+	last_finish_reasons: List[str] = []
+	for attempt in range(2):
+		resp = _http_post_json(url=url, payload=payload, headers={}, timeout=60)
+		text = _extract_gemini_text(resp)
+		if text:
+			return text
 
-	prompt_feedback = resp.get("promptFeedback")
-	if isinstance(prompt_feedback, dict):
-		block_reason = str(prompt_feedback.get("blockReason") or "").strip()
-		if block_reason:
-			raise frappe.ValidationError(f"Gemini so'rovi bloklandi: {block_reason}")
+		prompt_feedback = resp.get("promptFeedback")
+		if isinstance(prompt_feedback, dict):
+			block_reason = str(prompt_feedback.get("blockReason") or "").strip()
+			if block_reason:
+				raise frappe.ValidationError(f"Gemini so'rovi bloklandi: {block_reason}")
+
+		candidates = resp.get("candidates")
+		if isinstance(candidates, list):
+			last_finish_reasons = [
+				str(c.get("finishReason") or "").strip()
+				for c in candidates
+				if isinstance(c, dict) and str(c.get("finishReason") or "").strip()
+			]
+
+		# Gemini can occasionally return a non-text candidate on first try.
+		# Retry once before surfacing an error to the user.
+		if attempt == 0:
+			time.sleep(0.35)
+			continue
+
+	finish = ", ".join(dict.fromkeys(last_finish_reasons))
+	if finish:
+		raise frappe.ValidationError(f"Gemini matn qaytarmadi (finishReason: {finish}).")
 	raise frappe.ValidationError("Gemini javobidan matn olinmadi.")
 
 
@@ -331,6 +352,9 @@ def call_llm(*, messages: List[dict], max_tokens: int | None = None) -> str:
 				"too large",
 				"exceeds",
 				"invalid argument",
+				"matn olinmadi",
+				"matn qaytarmadi",
+				"did not return text",
 			)
 			if not any(p in msg for p in token_related):
 				raise
