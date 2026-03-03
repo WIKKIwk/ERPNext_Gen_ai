@@ -42,6 +42,7 @@ from erpnext_ai_tutor.tutor.navigation import (
 )
 from erpnext_ai_tutor.tutor.training import maybe_handle_training_flow
 from erpnext_ai_tutor.tutor.llm import call_llm, get_ai_provider_config
+from erpnext_ai_tutor.tutor.planner import plan_tutorial_fields as build_tutorial_field_plan
 from erpnext_ai_tutor.tutor.ui import (
 	enforce_primary_action_label,
 	ui_guidance_system_message,
@@ -139,6 +140,20 @@ def get_tutor_config() -> Dict[str, Any]:
 		"language": default_lang,
 		"welcome_session_marker": _welcome_session_marker(),
 	}
+
+
+@frappe.whitelist()
+def plan_tutorial_fields(doctype: str, stage: str = "open_and_fill_basic", fields: Any | None = None) -> Dict[str, Any]:
+	"""Plan demo field-fill steps with AI first, then deterministic fallback."""
+	field_rows = parse_json_arg(fields or [])
+	if not isinstance(field_rows, list):
+		field_rows = []
+	plan, source = build_tutorial_field_plan(
+		doctype=str(doctype or "").strip(),
+		stage=str(stage or "").strip().lower() or "open_and_fill_basic",
+		fields=field_rows,
+	)
+	return {"ok": True, "plan": plan, "source": source}
 
 
 @frappe.whitelist()
