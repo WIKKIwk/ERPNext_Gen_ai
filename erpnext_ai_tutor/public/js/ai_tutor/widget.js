@@ -38,6 +38,42 @@
 	const DRAFT_STORAGE_PREFIX = "erpnext_ai_tutor_draft";
 	const INPUT_MIN_HEIGHT = 38;
 	const INPUT_MAX_HEIGHT = 160;
+	const ICONS = Object.freeze({
+		fab: `
+			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+				<path d="M12 3.5l1.35 3.64L17 8.5l-3.65 1.36L12 13.5l-1.35-3.64L7 8.5l3.65-1.36L12 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M18.5 13l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8.8-2.1z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M6 14.5l.55 1.45L8 16.5l-1.45.55L6 18.5l-.55-1.45L4 16.5l1.45-.55L6 14.5z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+		`,
+		history: `
+			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+				<path d="M3.8 11.9A8.2 8.2 0 1112 20.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+				<path d="M3.8 8.8v3.6h3.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M12 8v4.1l2.6 1.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+		`,
+		new_chat: `
+			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+				<path d="M12 5.2v13.6M5.2 12h13.6" stroke="currentColor" stroke-width="1.95" stroke-linecap="round"/>
+			</svg>
+		`,
+		close: `
+			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+				<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="1.95" stroke-linecap="round"/>
+			</svg>
+		`,
+		send: `
+			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+				<path d="M6 18L18 6" stroke="currentColor" stroke-width="1.95" stroke-linecap="round"/>
+				<path d="M9.8 6H18v8.2" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+		`,
+	});
+
+	function icon(name) {
+		return ICONS[name] || "";
+	}
 
 	class TutorWidget {
 			constructor() {
@@ -646,7 +682,7 @@
 			root.className = "erpnext-ai-tutor-root";
 			root.innerHTML = `
 				<button class="erpnext-ai-tutor-fab" type="button" aria-label="AI Tutor">
-					${frappe?.utils?.icon ? frappe.utils.icon("es-line-question", "md") : "AI"}
+					${icon("fab")}
 				</button>
 				<div class="erpnext-ai-tutor-drawer erpnext-ai-tutor-hidden" role="dialog" aria-label="AI Tutor" aria-modal="false" aria-hidden="true">
 							<div class="erpnext-ai-tutor-header">
@@ -657,13 +693,13 @@
 								<div class="erpnext-ai-tutor-header-spacer"></div>
 								<span class="erpnext-ai-tutor-pill erpnext-ai-tutor-hidden"></span>
 								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-history-btn" type="button" aria-label="Chat history">
-									${frappe?.utils?.icon ? frappe.utils.icon("es-line-time", "sm") : "🕘"}
+									${icon("history")}
 								</button>
 								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-new-btn" type="button" aria-label="New chat">
-									${frappe?.utils?.icon ? frappe.utils.icon("es-line-add", "sm") : "+"}
+									${icon("new_chat")}
 								</button>
 								<button class="erpnext-ai-tutor-close" type="button" aria-label="Close">
-									${frappe?.utils?.icon ? frappe.utils.icon("close", "sm") : "×"}
+									${icon("close")}
 								</button>
 							</div>
 					<div class="erpnext-ai-tutor-content">
@@ -674,7 +710,7 @@
 							<form class="erpnext-ai-tutor-form">
 								<textarea class="erpnext-ai-tutor-input" rows="1" placeholder="Type your question..."></textarea>
 								<button class="erpnext-ai-tutor-send" type="submit" aria-label="Send" title="Send">
-									${frappe?.utils?.icon ? frappe.utils.icon("es-line-arrow-up-right", "md") : "➤"}
+									${icon("send")}
 								</button>
 							</form>
 						</div>

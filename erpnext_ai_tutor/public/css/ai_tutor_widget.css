@@ -26,6 +26,16 @@
 	transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
 }
 
+.erpnext-ai-tutor-fab svg,
+.erpnext-ai-tutor-close svg,
+.erpnext-ai-tutor-icon-btn svg,
+.erpnext-ai-tutor-send svg {
+	width: 18px;
+	height: 18px;
+	display: block;
+	stroke: currentColor;
+}
+
 .erpnext-ai-tutor-fab:hover {
 	filter: brightness(1.05);
 	transform: translateY(-1px);
@@ -703,11 +713,6 @@
 
 .erpnext-ai-tutor-send:hover {
 	filter: brightness(1.06);
-}
-
-.erpnext-ai-tutor-send svg {
-	width: 18px;
-	height: 18px;
 }
 
 .erpnext-ai-tutor-send.is-busy {
