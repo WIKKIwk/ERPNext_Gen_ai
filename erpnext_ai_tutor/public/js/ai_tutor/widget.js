@@ -103,6 +103,8 @@
 			this.$historyBtn = null;
 			this.$newChatBtn = null;
 			this.$typing = null;
+			this._newChatPending = false;
+			this._newChatPreviousConversationId = null;
 			this.guideRunner = null;
 			this._drawerHideTimer = null;
 			this._boundGlobalKeydown = (ev) => this.onGlobalKeydown(ev);
@@ -697,7 +699,7 @@
 								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-history-btn" type="button" aria-label="Chat history">
 									${icon("history")}
 								</button>
-								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-new-btn" type="button" aria-label="New chat">
+								<button class="erpnext-ai-tutor-icon-btn erpnext-ai-tutor-new-btn" type="button" aria-label="New chat" title="New chat">
 									${icon("new_chat")}
 								</button>
 								<button class="erpnext-ai-tutor-close" type="button" aria-label="Close">
@@ -741,7 +743,8 @@
 			this.$fab.addEventListener("click", () => this.toggle());
 			root.querySelector(".erpnext-ai-tutor-close").addEventListener("click", () => this.close());
 			this.$historyBtn.addEventListener("click", () => this.toggleHistory());
-			this.$newChatBtn.addEventListener("click", () => this.newChat());
+			this.$newChatBtn.addEventListener("click", () => this.handleNewChatClick());
+			this.updateNewChatButtonState();
 
 			root.querySelector(".erpnext-ai-tutor-form").addEventListener("submit", async (e) => {
 				e.preventDefault();
@@ -824,6 +827,61 @@
 		getActiveConversation() {
 			if (!this.activeConversationId) return null;
 			return this.conversations.find((c) => c && c.id === this.activeConversationId) || null;
+		}
+
+		updateNewChatButtonState() {
+			if (!this.$newChatBtn) return;
+			const isPending = Boolean(this._newChatPending);
+			this.$newChatBtn.classList.toggle("is-cancel-state", isPending);
+			this.$newChatBtn.setAttribute("aria-label", isPending ? "Cancel new chat" : "New chat");
+			this.$newChatBtn.setAttribute("title", isPending ? "Cancel new chat" : "New chat");
+			this.$newChatBtn.innerHTML = isPending ? icon("close") : icon("new_chat");
+		}
+
+		markNewChatStarted() {
+			if (!this._newChatPending) return;
+			this._newChatPending = false;
+			this._newChatPreviousConversationId = null;
+			this.updateNewChatButtonState();
+		}
+
+		cancelPendingNewChat() {
+			if (!this._newChatPending) return;
+			const pendingConv = this.getActiveConversation();
+			const pendingId = String(pendingConv?.id || "");
+			const hasMessages = Array.isArray(pendingConv?.messages) && pendingConv.messages.length > 0;
+			if (pendingId && !hasMessages) {
+				this.conversations = this.conversations.filter((c) => String(c?.id || "") !== pendingId);
+			}
+
+			const previousId = String(this._newChatPreviousConversationId || "");
+			if (previousId && this.conversations.some((c) => String(c?.id || "") === previousId)) {
+				this.activeConversationId = previousId;
+			} else if (!this.getActiveConversation() && this.conversations.length) {
+				this.conversations.sort((a, b) => (b?.updated_at || 0) - (a?.updated_at || 0));
+				this.activeConversationId = this.conversations[0]?.id || null;
+			} else if (!this.getActiveConversation()) {
+				this.newChat({ render: false });
+			}
+
+			this._newChatPending = false;
+			this._newChatPreviousConversationId = null;
+			this.saveChatState();
+			this.hideHistory();
+			this.animateBodySwap(() => this.renderActiveConversation());
+			this.open();
+			this.updateNewChatButtonState();
+		}
+
+		handleNewChatClick() {
+			if (this._newChatPending) {
+				this.cancelPendingNewChat();
+				return;
+			}
+			this._newChatPreviousConversationId = this.activeConversationId || null;
+			this.newChat({ render: true });
+			this._newChatPending = true;
+			this.updateNewChatButtonState();
 		}
 
 		ensureConversation() {
@@ -1042,6 +1100,9 @@
 					const id = el.getAttribute("data-id");
 					if (!id) return;
 					this.activeConversationId = id;
+					this._newChatPending = false;
+					this._newChatPreviousConversationId = null;
+					this.updateNewChatButtonState();
 					this.saveChatState();
 					this.hideHistory();
 					this.renderActiveConversation();
@@ -1350,6 +1411,7 @@
 		append(role, content, opts = {}) {
 			this.ensureConversation();
 			this.setConversationTitleIfNeeded(role === "user" ? content : "");
+			if (role === "user") this.markNewChatStarted();
 
 			const ts = Date.now();
 			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();

@@ -207,6 +207,15 @@
 	transition: transform 120ms ease, filter 120ms ease, background 120ms ease;
 }
 
+.erpnext-ai-tutor-icon-btn.is-cancel-state {
+	border-color: rgba(248, 113, 113, 0.45);
+	background: rgba(239, 68, 68, 0.12);
+}
+
+.erpnext-ai-tutor-icon-btn.is-cancel-state:hover {
+	background: rgba(239, 68, 68, 0.2);
+}
+
 .erpnext-ai-tutor-close:hover,
 .erpnext-ai-tutor-icon-btn:hover {
 	filter: brightness(1.08);
