@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List
 
 import frappe
 
 from erpnext_ai_tutor.tutor.navigation import build_navigation_plan
+from erpnext_ai_tutor.tutor.llm import call_llm
 
 
 CREATE_ACTION_RE = re.compile(
@@ -35,6 +37,12 @@ ACTION_KEYWORDS_RE = re.compile(
 
 ALLOWED_STAGES = {"open_and_fill_basic", "fill_more", "show_save_only"}
 ALLOWED_PENDING = {"", "action", "target"}
+AI_TARGET_ALIASES = {
+	"user": "User",
+	"users": "User",
+	"foydalanuvchi": "User",
+	"foydalanuvchilar": "User",
+}
 
 
 def _msg(lang: str, *, uz: str, ru: str, en: str) -> str:
@@ -93,6 +101,101 @@ def _doctype_from_slug(slug: str) -> str:
 	if not row:
 		return ""
 	return str(row[0].get("name") or "").strip()
+
+
+def _extract_json_payload(text: str) -> Any:
+	raw = str(text or "").strip()
+	if not raw:
+		return None
+	try:
+		return json.loads(raw)
+	except Exception:
+		pass
+	fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw, re.IGNORECASE)
+	if fence:
+		body = str(fence.group(1) or "").strip()
+		if body:
+			try:
+				return json.loads(body)
+			except Exception:
+				pass
+	obj = re.search(r"\{[\s\S]*\}", raw)
+	if obj:
+		try:
+			return json.loads(obj.group(0))
+		except Exception:
+			return None
+	return None
+
+
+def _coerce_to_real_doctype(candidate: str) -> str:
+	raw = str(candidate or "").strip()
+	if not raw:
+		return ""
+
+	alias = AI_TARGET_ALIASES.get(raw.lower())
+	if alias and _is_real_doctype(alias):
+		return alias
+	if _is_real_doctype(raw):
+		return raw
+
+	doctype = _doctype_from_slug(raw)
+	if doctype:
+		return doctype
+
+	raw_lower = raw.lower()
+	if raw_lower.endswith("s"):
+		doctype = _doctype_from_slug(raw_lower[:-1])
+		if doctype:
+			return doctype
+
+	plan = build_navigation_plan(f"{raw} list")
+	if isinstance(plan, dict) and str(plan.get("kind") or "").strip().lower() == "doctype":
+		plan_doctype = str(plan.get("doctype") or plan.get("target_label") or "").strip()
+		if _is_real_doctype(plan_doctype):
+			return plan_doctype
+	return ""
+
+
+def _infer_doctype_with_ai(user_message: str) -> str:
+	text = str(user_message or "").strip()
+	if not text:
+		return ""
+	system_msg = (
+		"You classify ERPNext training requests.\n"
+		"Return strict JSON only with this schema:\n"
+		"{\"action\":\"create_record|other\",\"doctype\":\"<canonical DocType name or empty>\",\"confidence\":0.0}\n"
+		"Rules:\n"
+		"- action=create_record only if user asks to add/create/new/teach creating a record.\n"
+		"- doctype must be ERPNext DocType name (English canonical) when clear.\n"
+		"- If unclear, set doctype empty and confidence <= 0.4.\n"
+		"- Never include prose, markdown, or extra keys."
+	)
+	try:
+		resp = call_llm(
+			messages=[
+				{"role": "system", "content": system_msg},
+				{"role": "user", "content": text},
+			],
+			max_tokens=220,
+		)
+	except Exception:
+		return ""
+
+	payload = _extract_json_payload(resp)
+	if not isinstance(payload, dict):
+		return ""
+	action = str(payload.get("action") or "").strip().lower()
+	if action != "create_record":
+		return ""
+	try:
+		confidence = float(payload.get("confidence") or 0.0)
+	except Exception:
+		confidence = 0.0
+	if confidence < 0.45:
+		return ""
+	doctype_raw = str(payload.get("doctype") or "").strip()
+	return _coerce_to_real_doctype(doctype_raw)
 
 
 def _extract_route_parts(ctx: Dict[str, Any]) -> List[str]:
@@ -193,8 +296,15 @@ def _resolve_doctype_target(
 	if target:
 		return target
 
-	# For create/teach requests, force a doctype-oriented second pass so
-	# queries like "user qo'shishni o'rgat" resolve to `User` (not current page fallback).
+	# AI-based target inference as a smart fallback when deterministic
+	# navigation parsing cannot map the user's phrase to a doctype.
+	ai_doctype = _infer_doctype_with_ai(user_message)
+	target = _target_from_doctype(ai_doctype)
+	if target:
+		return target
+
+	# Deterministic list-oriented second pass (kept after AI because this pass
+	# can overfit to unrelated "list" doctypes for some natural-language inputs).
 	forced_plan = build_navigation_plan(f"{user_message} list")
 	target = _doctype_from_plan(forced_plan)
 	if target:
