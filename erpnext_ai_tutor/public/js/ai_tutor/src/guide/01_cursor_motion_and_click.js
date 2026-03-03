@@ -256,6 +256,7 @@
 		clickPulse() {
 			if (!this.$cursor) return;
 			this.clearPulseTimers();
+			this.playClickSound?.();
 			const cursor = this.$cursor;
 			cursor.classList.remove("is-click");
 			void cursor.offsetWidth;

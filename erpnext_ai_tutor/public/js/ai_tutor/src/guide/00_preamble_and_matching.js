@@ -32,21 +32,23 @@
 		return Math.max(min, Math.min(max, n));
 	}
 
-		class GuideRunner {
-			constructor({ widget }) {
-				this.widget = widget || null;
-				this.running = false;
+			class GuideRunner {
+				constructor({ widget }) {
+					this.widget = widget || null;
+					this.running = false;
 				this.$layer = null;
 				this.$cursor = null;
 				this._pulseTimers = [];
 				this._runOptions = {};
 				this._lastProgressText = "";
 				this._lastProgressAt = 0;
-				this.hotspotX = 13;
-				this.hotspotY = 8;
-				this.cursorPosX = 16 + this.hotspotX;
-				this.cursorPosY = 16 + this.hotspotY;
-			}
+					this.hotspotX = 13;
+					this.hotspotY = 8;
+					this.cursorPosX = 16 + this.hotspotX;
+					this.cursorPosY = 16 + this.hotspotY;
+					this._soundCtx = null;
+					this._lastTypeSoundAt = 0;
+				}
 
 			setRunOptions(opts = {}) {
 				this._runOptions = opts && typeof opts === "object" ? opts : {};
@@ -134,9 +136,57 @@
 			this._pulseTimers = [];
 		}
 
-		sleep(ms) {
-			return new Promise((resolve) => window.setTimeout(resolve, ms));
-		}
+			sleep(ms) {
+				return new Promise((resolve) => window.setTimeout(resolve, ms));
+			}
+
+			getSoundContext() {
+				try {
+					const AC = window.AudioContext || window.webkitAudioContext;
+					if (!AC) return null;
+					if (!this._soundCtx) this._soundCtx = new AC();
+					if (this._soundCtx.state === "suspended") {
+						// Resume is best-effort; if blocked, we continue silently.
+						this._soundCtx.resume?.();
+					}
+					return this._soundCtx;
+				} catch {
+					return null;
+				}
+			}
+
+			playTone({ freq = 440, duration = 0.04, gain = 0.018, type = "triangle" } = {}) {
+				const ctx = this.getSoundContext();
+				if (!ctx) return;
+				try {
+					const now = ctx.currentTime;
+					const osc = ctx.createOscillator();
+					const amp = ctx.createGain();
+					osc.type = type;
+					osc.frequency.setValueAtTime(Math.max(80, Number(freq) || 440), now);
+					amp.gain.setValueAtTime(0.0001, now);
+					amp.gain.exponentialRampToValueAtTime(Math.max(0.0002, Number(gain) || 0.018), now + 0.005);
+					amp.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.012, Number(duration) || 0.04));
+					osc.connect(amp);
+					amp.connect(ctx.destination);
+					osc.start(now);
+					osc.stop(now + Math.max(0.014, Number(duration) || 0.04));
+				} catch {
+					// silent fallback
+				}
+			}
+
+			playClickSound() {
+				this.playTone({ freq: 520, duration: 0.03, gain: 0.028, type: "triangle" });
+			}
+
+			playTypingSound() {
+				const now = Date.now();
+				if (now - this._lastTypeSoundAt < 14) return;
+				this._lastTypeSoundAt = now;
+				const jitter = (Math.random() - 0.5) * 34;
+				this.playTone({ freq: 760 + jitter, duration: 0.02, gain: 0.012, type: "square" });
+			}
 
 		async waitFor(getter, timeoutMs = 4200, intervalMs = 120) {
 			const start = Date.now();

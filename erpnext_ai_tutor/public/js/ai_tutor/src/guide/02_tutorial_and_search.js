@@ -590,7 +590,7 @@
 			async typeIntoInput(input, value, opts = {}) {
 				if (!input || value === undefined || value === null) return false;
 				const text = String(value);
-				const charDelay = Math.max(8, Number(opts?.char_delay_ms || 18));
+				const charDelay = Math.max(14, Number(opts?.char_delay_ms || 46));
 				const initialPause = Math.max(0, Number(opts?.initial_pause_ms || 0));
 				const afterTypePause = Math.max(0, Number(opts?.after_type_pause_ms || 0));
 				try {
@@ -608,6 +608,7 @@
 						if (!this.running) return false;
 						input.value += ch;
 						input.dispatchEvent(new Event("input", { bubbles: true }));
+						this.playTypingSound?.();
 						await this.sleep(charDelay);
 					}
 					if (afterTypePause) await this.sleep(afterTypePause);
@@ -876,7 +877,7 @@
 							});
 							if (focused) {
 								await this.typeIntoInput(input, stringValue, {
-									char_delay_ms: 34,
+									char_delay_ms: 58,
 									after_type_pause_ms: 90,
 								});
 								input.blur?.();
@@ -959,7 +960,7 @@
 							});
 							if (focused) {
 								await this.typeIntoInput(input, stringValue, {
-									char_delay_ms: 36,
+									char_delay_ms: 60,
 									after_type_pause_ms: 100,
 								});
 								input.blur?.();
