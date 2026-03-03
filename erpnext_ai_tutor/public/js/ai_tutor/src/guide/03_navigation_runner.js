@@ -235,10 +235,10 @@
 			return `Men "${label}" tugmasini aniq topa olmadim, shuning uchun noto'g'ri bosishni to'xtatdim. Hozir ko'rinayotgan elementlar: ${visibleText}.`;
 		}
 
-		async run(guideRaw) {
-			const guide = this.normalizeGuide(guideRaw);
-			if (!guide) return { ok: false, message: "Guide payload noto'g'ri." };
-			const isTutorial = this.isCreateTutorial(guide);
+			async run(guideRaw, runOptions = {}) {
+				const guide = this.normalizeGuide(guideRaw);
+				if (!guide) return { ok: false, message: "Guide payload noto'g'ri." };
+				const isTutorial = this.isCreateTutorial(guide);
 			if (!isTutorial && guide.route && this.isAtRoute(guide.route)) {
 				return {
 					ok: true,
@@ -246,11 +246,12 @@
 					already_there: true,
 					message: "Siz allaqachon shu yerdasiz.",
 				};
-			}
-			this.stop();
-			this.running = true;
-			this.createLayer();
-			let result = {
+				}
+				this.stop();
+				this.setRunOptions(runOptions);
+				this.running = true;
+				this.createLayer();
+				let result = {
 				ok: true,
 				message: "",
 				reached_target: false,
@@ -388,11 +389,12 @@
 				} else if (!guide.route) {
 					result.reached_target = Boolean(result.ok);
 				}
-			} finally {
-				this.stop();
+				} finally {
+					this.setRunOptions({});
+					this.stop();
+				}
+				return result;
 			}
-			return result;
-		}
 	}
 
 	ns.GuideRunner = GuideRunner;

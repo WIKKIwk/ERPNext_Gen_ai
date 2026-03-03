@@ -258,13 +258,18 @@
 		async runGuidedCursor(guide, opts = { auto: false, triggerEl: null, messageTs: 0 }) {
 			if (!guide || !this.isGuidedCursorEnabled() || !this.guideRunner) return;
 			const triggerEl = opts?.triggerEl || null;
-			const messageTs = this.normalizeMessageTs(opts?.messageTs);
-			this.setGuideButtonBusy(triggerEl, true);
-			try {
-				const runResult = await this.guideRunner.run(guide);
-				if (runResult?.already_there && !opts?.auto) {
-					this.append(
-						"assistant",
+				const messageTs = this.normalizeMessageTs(opts?.messageTs);
+				this.setGuideButtonBusy(triggerEl, true);
+				try {
+					const runResult = await this.guideRunner.run(guide, {
+						onProgress: (text) => {
+							if (opts?.auto) return;
+							this.append("assistant", String(text), { route_key: this.routeKey || this.getRouteKey() });
+						},
+					});
+					if (runResult?.already_there && !opts?.auto) {
+						this.append(
+							"assistant",
 						String(runResult?.message || "Siz allaqachon shu yerdasiz."),
 						{ route_key: this.routeKey || this.getRouteKey() }
 					);

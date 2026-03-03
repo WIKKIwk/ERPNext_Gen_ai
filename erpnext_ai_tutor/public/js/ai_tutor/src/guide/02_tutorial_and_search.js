@@ -106,20 +106,24 @@
 			return null;
 		}
 
-			findFieldInput(fieldname) {
+			findFieldInput(fieldname, opts = {}) {
 				const key = String(fieldname || "").trim();
 				if (!key) return null;
+				const allowHidden = Boolean(opts?.allowHidden);
 				const selectors = [
-				`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
-				`.frappe-control[data-fieldname='${key}'] textarea`,
-				`.frappe-control[data-fieldname='${key}'] select`,
-				`.control-input-wrapper [data-fieldname='${key}'] input:not([type='hidden'])`,
-			];
-			for (const sel of selectors) {
-				const el = document.querySelector(sel);
-				if (!el || !isVisible(el)) continue;
-				if (el.disabled || el.readOnly) continue;
-				return el;
+					`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
+					`.frappe-control[data-fieldname='${key}'] textarea`,
+					`.frappe-control[data-fieldname='${key}'] select`,
+					`.control-input-wrapper [data-fieldname='${key}'] input:not([type='hidden'])`,
+				];
+				for (const sel of selectors) {
+					const nodes = document.querySelectorAll(sel);
+					for (const el of nodes) {
+						if (!el) continue;
+						if (!allowHidden && !isVisible(el)) continue;
+						if (el.disabled || el.readOnly) continue;
+						return el;
+					}
 				}
 				return null;
 			}
@@ -142,25 +146,6 @@
 				return Boolean(this.getQuickEntryDialog());
 			}
 
-			findQuickEntryFieldInput(fieldname) {
-				const key = String(fieldname || "").trim();
-				if (!key) return null;
-				const dialog = this.getQuickEntryDialog();
-				if (!dialog) return null;
-				const selectors = [
-					`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
-					`.frappe-control[data-fieldname='${key}'] textarea`,
-					`.frappe-control[data-fieldname='${key}'] select`,
-				];
-				for (const sel of selectors) {
-					const el = dialog.querySelector(sel);
-					if (!el || !isVisible(el)) continue;
-					if (el.disabled || el.readOnly) continue;
-					return el;
-				}
-				return null;
-			}
-
 			findQuickEntryActionButton(kind = "edit_full_form") {
 				const dialog = this.getQuickEntryDialog();
 				if (!dialog) return null;
@@ -177,28 +162,6 @@
 					if (kindNorm === "save" && saveRe.test(label)) return el;
 				}
 				return null;
-			}
-
-			async fillQuickEntryFields(doctype, stage = "open_and_fill_basic") {
-				const plans = this.getFormFieldSamplePlans(doctype, stage);
-				let filled = 0;
-				for (const plan of plans) {
-					if (!this.running) break;
-					const input = this.findQuickEntryFieldInput(plan.fieldname);
-					if (!input) continue;
-					const focused = await this.focusElement(input, String(plan.message || "Quick Entry maydonini to'ldiramiz."), {
-						click: true,
-						duration_ms: 240,
-						pre_click_pause_ms: 100,
-					});
-					if (!focused) continue;
-					const ok = await this.typeIntoInput(input, plan.value);
-					if (ok) {
-						filled += 1;
-						await this.sleep(110);
-					}
-				}
-				return filled;
 			}
 
 		async typeIntoInput(input, value) {
@@ -227,17 +190,48 @@
 			}
 		}
 
-		getFormFieldSamplePlans(doctype, stage = "open_and_fill_basic") {
-			const dt = String(doctype || "").trim();
-			const lower = dt.toLowerCase();
-			if (lower === "item") {
-				const base = [
-					{ fieldname: "item_code", value: "DEMO-ITEM-001", message: 'Item Code maydonini to\'ldiramiz.' },
-					{ fieldname: "item_name", value: "Demo Item", message: "Item Name maydonini to'ldiramiz." },
-					{ fieldname: "description", value: "AI Tutor orqali yaratilgan demo yozuv.", message: "Description maydonini to'ldiramiz." },
-				];
-				return stage === "fill_more" ? base.slice(2) : base.slice(0, 2);
-			}
+			getFormFieldSamplePlans(doctype, stage = "open_and_fill_basic") {
+				const dt = String(doctype || "").trim();
+				const lower = dt.toLowerCase();
+				if (lower === "item") {
+					const base = [
+						{
+							fieldname: "item_code",
+							label: "Item Code",
+							value: "DEMO-ITEM-001",
+							reason: "har bir mahsulot yagona kod bilan aniqlanishi uchun",
+						},
+						{
+							fieldname: "item_name",
+							label: "Item Name",
+							value: "Demo Item",
+							reason: "foydalanuvchi ro'yxatda nomini aniq ko'rishi uchun",
+						},
+						{
+							fieldname: "item_group",
+							label: "Item Group",
+							value: "All Item Groups",
+							reason: "mahsulotni toifaga biriktirish uchun",
+						},
+						{
+							fieldname: "stock_uom",
+							label: "Stock UOM",
+							value: "Nos",
+							reason: "ombor hisobi o'lchov birligida yurishi uchun",
+						},
+					];
+					if (stage === "fill_more") {
+						return [
+							{
+								fieldname: "description",
+								label: "Description",
+								value: "AI Tutor orqali yaratilgan demo yozuv.",
+								reason: "kartochkada izoh saqlanishi uchun",
+							},
+						];
+					}
+					return base;
+				}
 
 			const frm = window.cur_frm;
 			if (!frm || String(frm.doctype || "").trim().toLowerCase() !== lower) return [];
@@ -255,47 +249,62 @@
 				let sample = "Demo";
 				if (ft === "Int" || ft === "Float" || ft === "Currency") sample = "1";
 				else sample = `Demo ${String(df.label || fieldname).trim()}`;
-				plans.push({
-					fieldname,
-					value: sample,
-					message: `${String(df.label || fieldname).trim()} maydonini to'ldiramiz.`,
-				});
-				if (plans.length >= 3) break;
-			}
-			return stage === "fill_more" ? plans.slice(1) : plans.slice(0, 2);
-		}
-
-		async fillFormFields(doctype, stage = "open_and_fill_basic") {
-			const plans = this.getFormFieldSamplePlans(doctype, stage);
-			let filled = 0;
-			for (const plan of plans) {
-				if (!this.running) break;
-				const input = this.findFieldInput(plan.fieldname);
-				if (!input) continue;
-				const focused = await this.focusElement(input, String(plan.message || "Maydonni to'ldiramiz."), {
-					click: true,
-					duration_ms: 260,
-					pre_click_pause_ms: 110,
-				});
-				if (!focused) continue;
-				const ok = await this.typeIntoInput(input, plan.value);
-				if (ok) {
-					filled += 1;
-					await this.sleep(120);
+					const label = String(df.label || fieldname).trim();
+					plans.push({ fieldname, label, value: sample, reason: "demo ko'rsatish uchun" });
+					if (plans.length >= 3) break;
 				}
+				return stage === "fill_more" ? plans.slice(1) : plans.slice(0, 2);
 			}
-			return filled;
-		}
+
+			async fillFormFields(doctype, stage = "open_and_fill_basic") {
+				const plans = this.getFormFieldSamplePlans(doctype, stage);
+				let filled = 0;
+				const filledLabels = [];
+				for (const plan of plans) {
+					if (!this.running) break;
+					const label = String(plan?.label || plan?.fieldname || "Field").trim();
+					const reason = String(plan?.reason || "demo maqsadida").trim();
+					const input = this.findFieldInput(plan.fieldname, { allowHidden: true });
+					if (!input) {
+						this.emitProgress(`⚠️ **${label}** maydoni topilmadi, keyingi qadamga o'tdim.`);
+						continue;
+					}
+					const currentVal = String(input.value || "").trim();
+					if (currentVal) {
+						this.emitProgress(`ℹ️ **${label}** allaqachon to'ldirilgan, qayta yozmadim.`);
+						continue;
+					}
+					const focused = await this.focusElement(
+						input,
+						`${label} maydonini to'ldiramiz.`,
+						{
+						click: true,
+						duration_ms: 260,
+						pre_click_pause_ms: 110,
+						}
+					);
+					if (!focused) continue;
+					const ok = await this.typeIntoInput(input, plan.value);
+					if (ok) {
+						filled += 1;
+						filledLabels.push(label);
+						this.emitProgress(`✅ **${label}** maydoni \`${String(plan.value || "").trim()}\` bilan to'ldirildi, sababi: ${reason}.`);
+						await this.sleep(120);
+					}
+				}
+				return { filled, filledLabels };
+			}
 
 			async runCreateRecordTutorial(guide) {
 				if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
 				const doctype = this.getTutorialDoctype(guide);
 				const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
+				this.emitProgress(`🚀 **${doctype}** bo'yicha amaliy ko'rsatishni boshladim.`);
 
-			if (!this.isOnDoctypeNewForm(doctype)) {
-				if (guide.route && !this.isAtRoute(guide.route)) {
-					const openedList = await this.navigate(guide.route);
-					if (!openedList) {
+				if (!this.isOnDoctypeNewForm(doctype)) {
+					if (guide.route && !this.isAtRoute(guide.route)) {
+						const openedList = await this.navigate(guide.route);
+						if (!openedList) {
 						return { ok: false, message: "Kerakli bo'limni ochib bo'lmadi, qayta urinib ko'ring." };
 					}
 				}
@@ -303,18 +312,20 @@
 				if (!createBtn) {
 					return { ok: false, message: 'Yangi yozuv ochish tugmasini topa olmadim ("Add/New/Create").' };
 				}
-				const clicked = await this.focusElement(createBtn, 'Yangi yozuv ochish uchun "Add/New" tugmasini bosamiz.', {
-					click: true,
-					duration_ms: 320,
-					pre_click_pause_ms: 120,
-				});
+					const clicked = await this.focusElement(createBtn, 'Yangi yozuv ochish uchun "Add/New" tugmasini bosamiz.', {
+						click: true,
+						duration_ms: 320,
+						pre_click_pause_ms: 120,
+					});
 					if (!clicked) {
 						return { ok: false, message: "Yangi yozuv tugmasini xavfsiz bosib bo'lmadi." };
 					}
+					this.emitProgress("➕ `Add/New` bosildi, endi forma turini tekshiryapman.");
 					await this.waitFor(() => this.isOnDoctypeNewForm(doctype) || this.isQuickEntryOpen(), 5200, 120);
 				}
 				const quickEntryOpen = this.isQuickEntryOpen();
 				if (!this.isOnDoctypeNewForm(doctype) && quickEntryOpen) {
+					this.emitProgress('🧩 Quick Entry ochildi, to\'liq o\'rgatish uchun **Edit Full Form** ga o\'tamiz.');
 					if (stage === "show_save_only") {
 						const quickSaveBtn = this.findQuickEntryActionButton("save");
 						if (quickSaveBtn) {
@@ -323,8 +334,6 @@
 								duration_ms: 240,
 							});
 						}
-					} else {
-						await this.fillQuickEntryFields(doctype, stage === "fill_more" ? "fill_more" : "open_and_fill_basic");
 					}
 
 					const fullFormBtn = this.findQuickEntryActionButton("edit_full_form");
@@ -339,8 +348,11 @@
 							}
 						);
 						if (openedFullForm) {
+							this.emitProgress("📝 `Edit Full Form` bosildi, endi to'liq formani to'ldirishga o'tamiz.");
 							await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
 						}
+					} else {
+						return { ok: false, message: '"Edit Full Form" tugmasini topa olmadim.' };
 					}
 				}
 
@@ -356,38 +368,46 @@
 					};
 				}
 
-			if (stage === "show_save_only") {
-				const saveBtn = await this.waitFor(() => this.findSaveActionButton(), 2000, 120);
-				if (saveBtn) {
-					await this.focusElement(saveBtn, 'Mana shu joyda "Save/Submit" tugmasi turadi (bosmayman).', {
-						click: false,
+				if (stage === "show_save_only") {
+					const saveBtn = await this.waitFor(() => this.findSaveActionButton(), 2000, 120);
+					if (saveBtn) {
+						await this.focusElement(saveBtn, 'Mana shu joyda "Save/Submit" tugmasi turadi (bosmayman).', {
+							click: false,
 						duration_ms: 280,
+						});
+					}
+					this.emitProgress('💾 `Save/Submit` joyini ko\'rsatdim, lekin xavfsizlik uchun bosmadim.');
+					return {
+						ok: true,
+						reached_target: true,
+						message: 'Save/Submit tugmasini ko\'rsatdim. Xavfsizlik uchun uni avtomatik bosmadim.',
+					};
+				}
+
+				const fillResult = await this.fillFormFields(doctype, stage === "fill_more" ? "fill_more" : "open_and_fill_basic");
+				const filled = Number(fillResult?.filled || 0);
+				const filledLabels = Array.isArray(fillResult?.filledLabels) ? fillResult.filledLabels : [];
+				const saveBtn = this.findSaveActionButton();
+				if (saveBtn) {
+					await this.focusElement(saveBtn, 'Saqlash joyini ham ko\'rsatdim (bosmayman).', {
+						click: false,
+						duration_ms: 220,
 					});
 				}
+				this.emitProgress(
+					filled > 0
+						? `🎯 To'ldirilgan maydonlar: ${filledLabels.join(", ")}. Endi user shu ma'lumotlarni tekshirib davom etishi mumkin.`
+						: "⚠️ To'ldirishga mos maydon topilmadi."
+				);
 				return {
 					ok: true,
 					reached_target: true,
-					message: 'Save/Submit tugmasini ko\'rsatdim. Xavfsizlik uchun uni avtomatik bosmadim.',
+					message:
+						filled > 0
+							? `${filled} ta maydonni demo tarzda to'ldirdim: ${filledLabels.join(", ")}. Keyingi qadamni aytsangiz davom ettiraman.`
+							: "Forma ochildi, lekin avtomatik to'ldirishga mos maydon topilmadi. Qaysi maydonni to'ldiray?",
 				};
 			}
-
-			const filled = await this.fillFormFields(doctype, stage === "fill_more" ? "fill_more" : "open_and_fill_basic");
-			const saveBtn = this.findSaveActionButton();
-			if (saveBtn) {
-				await this.focusElement(saveBtn, 'Saqlash joyini ham ko\'rsatdim (bosmayman).', {
-					click: false,
-					duration_ms: 220,
-				});
-			}
-			return {
-				ok: true,
-				reached_target: true,
-				message:
-					filled > 0
-						? `${filled} ta maydonni demo tarzda to'ldirib ko'rsatdim. Keyingi qadamni ham aytsangiz davom ettiraman.`
-						: "Forma ochildi, lekin avtomatik to'ldirishga mos maydon topilmadi. Qaysi maydonni to'ldiray?",
-			};
-		}
 
 		getSearchQuery(guide, step) {
 			const stepLabel = String(step?.label || "").trim();

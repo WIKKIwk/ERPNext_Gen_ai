@@ -32,18 +32,41 @@
 		return Math.max(min, Math.min(max, n));
 	}
 
-	class GuideRunner {
-		constructor({ widget }) {
-			this.widget = widget || null;
-			this.running = false;
-			this.$layer = null;
-			this.$cursor = null;
-			this._pulseTimers = [];
-			this.hotspotX = 13;
-			this.hotspotY = 8;
-			this.cursorPosX = 16 + this.hotspotX;
-			this.cursorPosY = 16 + this.hotspotY;
-		}
+		class GuideRunner {
+			constructor({ widget }) {
+				this.widget = widget || null;
+				this.running = false;
+				this.$layer = null;
+				this.$cursor = null;
+				this._pulseTimers = [];
+				this._runOptions = {};
+				this._lastProgressText = "";
+				this._lastProgressAt = 0;
+				this.hotspotX = 13;
+				this.hotspotY = 8;
+				this.cursorPosX = 16 + this.hotspotX;
+				this.cursorPosY = 16 + this.hotspotY;
+			}
+
+			setRunOptions(opts = {}) {
+				this._runOptions = opts && typeof opts === "object" ? opts : {};
+			}
+
+			emitProgress(message) {
+				const text = String(message || "").trim();
+				if (!text) return;
+				const now = Date.now();
+				if (text === this._lastProgressText && now - this._lastProgressAt < 480) return;
+				this._lastProgressText = text;
+				this._lastProgressAt = now;
+				const cb = this._runOptions?.onProgress;
+				if (typeof cb !== "function") return;
+				try {
+					cb(text);
+				} catch {
+					// ignore progress callback errors
+				}
+			}
 
 		normalizeGuide(raw) {
 			if (!raw || typeof raw !== "object") return null;
