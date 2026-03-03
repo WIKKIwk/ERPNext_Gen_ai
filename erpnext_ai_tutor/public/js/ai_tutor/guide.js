@@ -1245,9 +1245,9 @@
 
 				if (!this.isOnDoctypeNewForm(doctype) && this.isQuickEntryOpen()) {
 					return {
-						ok: true,
-						reached_target: true,
-						message: "Quick Entry oynasi ochildi. Asosiy maydonlarni to'ldirib ko'rsatdim. Davom ettirish uchun 'Edit Full Form' ni bosing.",
+						ok: false,
+						reached_target: false,
+						message: "Quick Entry oynasidan to'liq formaga o'tib bo'lmadi. Iltimos 'Edit Full Form' tugmasini tekshirib qayta urinib ko'ring.",
 					};
 				}
 
