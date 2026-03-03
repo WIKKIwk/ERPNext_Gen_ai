@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 import frappe
@@ -66,6 +67,8 @@ GUIDE_ROUTE_OVERRIDES = {
 	}
 }
 
+GUIDE_NAV_TAG_RE = re.compile(r"\[\[\s*GUIDE_NAV\s*\]\]", re.IGNORECASE)
+
 
 def _normalize_route_path(route: str) -> str:
 	path = str(route or "").strip()
@@ -101,6 +104,18 @@ def _apply_guide_route_override(route: str, target_label: str, menu_path: List[s
 		return expected_target, expected_menu_path
 
 	return target_label, menu_path
+
+
+def _extract_guide_flag(reply_text: str) -> tuple[str, bool]:
+	text = str(reply_text or "")
+	if not text:
+		return "", False
+	has_flag = bool(GUIDE_NAV_TAG_RE.search(text))
+	if not has_flag:
+		return text, False
+	cleaned = GUIDE_NAV_TAG_RE.sub("", text)
+	cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+	return cleaned, True
 
 
 @frappe.whitelist()
@@ -177,7 +192,7 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 
 	nav_plan: Dict[str, Any] = {}
 	nav_hint = ""
-	nav_query = False
+	pre_nav_candidate = False
 
 	def _guide_from_nav_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
 		if not isinstance(plan, dict):
@@ -199,14 +214,12 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		}
 
 	if advanced_mode:
-		# Guardrail: only enable guided navigation when user explicitly asks
-		# to find/open/go somewhere. This prevents false "Ko'rsatib ber"
-		# buttons on normal small-talk messages.
-		nav_query = bool(should_offer_navigation_guide(user_message, nav_plan_exists=False))
-		if nav_query:
+		# Conservative pre-check only to improve LLM context when user already
+		# sounds like they are asking for navigation help.
+		pre_nav_candidate = bool(should_offer_navigation_guide(user_message, nav_plan_exists=False))
+		if pre_nav_candidate:
 			nav_plan = build_navigation_plan(user_message)
-	if nav_query:
-		nav_hint = build_navigation_reply_from_plan(nav_plan, lang=lang, strict=True)
+			nav_hint = build_navigation_reply_from_plan(nav_plan, lang=lang, strict=True)
 
 	if advanced_mode and isinstance(ctx, dict) and WHICH_FIELD_RE.search(user_message):
 		return {"ok": True, "reply": which_field_reply(ctx, lang=lang)}
@@ -245,7 +258,7 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		if derived_hints:
 			messages.append({"role": "system", "content": derived_hints})
 
-	if nav_query:
+	if pre_nav_candidate:
 		if nav_hint:
 			messages.append(
 				{
@@ -268,6 +281,20 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 					),
 				}
 			)
+
+	messages.append(
+		{
+			"role": "system",
+			"content": (
+				"Navigation action flag protocol:\n"
+				"Append `[[GUIDE_NAV]]` only when the user asks to find/open/navigate to a "
+				"module, workspace, report, DocType, or page in ERPNext.\n"
+				"Do not append this flag for greetings, gratitude, small talk, status/chat, "
+				"or general explanation questions.\n"
+				"If unsure, do not append the flag."
+			),
+		}
+	)
 
 	messages.append(
 		{
@@ -368,7 +395,7 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		reply = call_llm(messages=messages, max_tokens=max_tokens)
 	except Exception as exc:
 		fallback_key = _llm_fallback_reply_key(exc)
-		if advanced_mode and nav_query and nav_plan:
+		if advanced_mode and pre_nav_candidate and nav_plan:
 			guide = _guide_from_nav_plan(nav_plan)
 			if guide:
 				deterministic_nav_reply = nav_hint or build_navigation_reply_from_plan(nav_plan, lang=lang, strict=False)
@@ -423,8 +450,15 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		except Exception:
 			pass
 
+	guide_requested_by_llm = False
+	if advanced_mode:
+		reply, guide_requested_by_llm = _extract_guide_flag(reply)
+
 	guide: Dict[str, Any] = {}
-	if advanced_mode and nav_query and nav_plan:
-		guide = _guide_from_nav_plan(nav_plan)
+	if advanced_mode and guide_requested_by_llm:
+		if not nav_plan:
+			nav_plan = build_navigation_plan(user_message)
+		if nav_plan:
+			guide = _guide_from_nav_plan(nav_plan)
 
 	return {"ok": True, "reply": reply or "", "guide": guide}
