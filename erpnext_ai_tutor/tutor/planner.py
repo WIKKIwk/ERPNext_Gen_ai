@@ -118,7 +118,7 @@ def _fallback_plan(doctype: str, stage: str, fields: List[Dict[str, Any]]) -> Li
 				if text and text != "None":
 					choice = text
 					break
-				value = choice or "Demo"
+			value = choice or "Demo"
 		elif fieldtype == "link":
 			# Runtime will try to resolve an existing linked record name.
 			value = ""
