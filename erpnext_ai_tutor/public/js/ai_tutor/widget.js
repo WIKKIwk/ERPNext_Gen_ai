@@ -39,10 +39,8 @@
 	const INPUT_MIN_HEIGHT = 38;
 	const INPUT_MAX_HEIGHT = 160;
 	const DRAWER_CLOSE_ANIM_MS = 280;
-	const TYPEWRITER_MIN_MS = 22;
-	const TYPEWRITER_MAX_MS = 62;
-	const TYPEWRITER_TARGET_MIN_MS = 3600;
-	const TYPEWRITER_TARGET_MAX_MS = 9000;
+	const TYPEWRITER_TARGET_MIN_MS = 5200;
+	const TYPEWRITER_TARGET_MAX_MS = 14000;
 	const ICONS = Object.freeze({
 		fab: `
 			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
@@ -110,6 +108,8 @@
 			this._newChatPending = false;
 			this._newChatPreviousConversationId = null;
 			this.guideRunner = null;
+			this._typingAnimationToken = 0;
+			this._typingRAF = null;
 			this._drawerHideTimer = null;
 			this._boundGlobalKeydown = (ev) => this.onGlobalKeydown(ev);
 			this._boundDrawerKeydown = (ev) => this.onDrawerKeydown(ev);
@@ -1380,6 +1380,11 @@
 			this.saveDraft(this.routeKey);
 			this.isOpen = false;
 			if (!this.$drawer) return;
+			this._typingAnimationToken += 1;
+			if (this._typingRAF) {
+				window.cancelAnimationFrame(this._typingRAF);
+				this._typingRAF = null;
+			}
 			if (this._drawerHideTimer) {
 				clearTimeout(this._drawerHideTimer);
 				this._drawerHideTimer = null;
@@ -1437,12 +1442,6 @@
 			return el;
 		}
 
-		delay(ms) {
-			return new Promise((resolve) => {
-				window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
-			});
-		}
-
 		shouldAnimateAssistantReply(content) {
 			const text = String(content || "");
 			if (!text.trim()) return false;
@@ -1454,6 +1453,54 @@
 				// ignore
 			}
 			return true;
+		}
+
+		async animateAssistantTypewriter(textEl, finalText, token) {
+			const chars = Array.from(String(finalText || ""));
+			const total = chars.length;
+			if (!total || !textEl) return;
+			const targetDuration = Math.max(
+				TYPEWRITER_TARGET_MIN_MS,
+				Math.min(TYPEWRITER_TARGET_MAX_MS, 3600 + total * 18)
+			);
+
+			await new Promise((resolve) => {
+				const start = performance.now();
+				let lastCount = 0;
+
+				const frame = (now) => {
+					if (
+						token !== this._typingAnimationToken ||
+						!textEl ||
+						!document.body.contains(textEl)
+					) {
+						this._typingRAF = null;
+						resolve();
+						return;
+					}
+
+					const t = Math.max(0, Math.min(1, (now - start) / targetDuration));
+					const eased = t < 0.5
+						? 4 * t * t * t
+						: 1 - Math.pow(-2 * t + 2, 3) / 2;
+					const count = Math.max(1, Math.min(total, Math.floor(eased * total)));
+
+					if (count !== lastCount) {
+						textEl.textContent = chars.slice(0, count).join("");
+						this.$body.scrollTop = this.$body.scrollHeight;
+						lastCount = count;
+					}
+
+					if (t >= 1) {
+						this._typingRAF = null;
+						resolve();
+						return;
+					}
+					this._typingRAF = window.requestAnimationFrame(frame);
+				};
+
+				this._typingRAF = window.requestAnimationFrame(frame);
+			});
 		}
 
 		buildAssistantContent(content, guide) {
@@ -1534,28 +1581,11 @@
 				return wrap;
 			}
 
-			const chars = Array.from(finalText);
-			const total = chars.length;
-			const chunkSize = total > 900 ? 5 : total > 560 ? 4 : total > 300 ? 3 : total > 140 ? 2 : 1;
-			const steps = Math.max(1, Math.ceil(total / chunkSize));
-			const targetDuration = Math.max(
-				TYPEWRITER_TARGET_MIN_MS,
-				Math.min(TYPEWRITER_TARGET_MAX_MS, 2600 + total * 11)
-			);
-			const delayMs = Math.max(
-				TYPEWRITER_MIN_MS,
-				Math.min(TYPEWRITER_MAX_MS, Math.round(targetDuration / steps))
-			);
-
+			const token = ++this._typingAnimationToken;
 			textEl.classList.add("is-typewriting");
-			for (let i = 0; i < total; i += chunkSize) {
-				const shown = chars.slice(0, Math.min(total, i + chunkSize)).join("");
-				textEl.textContent = shown;
-				this.$body.scrollTop = this.$body.scrollHeight;
-				const progress = total > 0 ? Math.min(1, (i + chunkSize) / total) : 1;
-				const centerWeight = 1 - Math.pow(Math.abs(progress - 0.5) * 2, 1.35);
-				const stepDelay = Math.round(delayMs * (0.92 + centerWeight * 0.18));
-				await this.delay(stepDelay);
+			await this.animateAssistantTypewriter(textEl, finalText, token);
+			if (token !== this._typingAnimationToken || !document.body.contains(textEl)) {
+				return wrap;
 			}
 			this.renderAssistantRichText(textEl, finalText, guide);
 			textEl.classList.remove("is-typewriting");
