@@ -155,6 +155,32 @@ def _normalize_menu_path(menu_path: Any, doctype: str) -> List[str]:
 	return path[:6]
 
 
+def _target_from_doctype(doctype: str) -> Dict[str, Any]:
+	name = str(doctype or "").strip()
+	if not name or not _is_real_doctype(name):
+		return {}
+	plan = build_navigation_plan(f"{name} list")
+	route = str(plan.get("route") or "").strip() if isinstance(plan, dict) else ""
+	if not route:
+		route = f"/app/{_doctype_to_slug(name)}"
+	menu_path = _normalize_menu_path(plan.get("menu_path") if isinstance(plan, dict) else None, name)
+	return {
+		"doctype": name,
+		"route": route,
+		"menu_path": menu_path,
+	}
+
+
+def _doctype_from_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
+	if not isinstance(plan, dict):
+		return {}
+	kind = str(plan.get("kind") or "").strip().lower()
+	if kind != "doctype":
+		return {}
+	doctype = str(plan.get("doctype") or plan.get("target_label") or "").strip()
+	return _target_from_doctype(doctype)
+
+
 def _resolve_doctype_target(
 	user_message: str,
 	ctx: Dict[str, Any],
@@ -163,44 +189,31 @@ def _resolve_doctype_target(
 	allow_context_fallback: bool = True,
 ) -> Dict[str, Any]:
 	plan = build_navigation_plan(user_message)
-	kind = str(plan.get("kind") or "").strip().lower() if isinstance(plan, dict) else ""
-	if kind == "doctype":
-		doctype = str(plan.get("doctype") or plan.get("target_label") or "").strip()
-		if doctype and _is_real_doctype(doctype):
-			route = str(plan.get("route") or "").strip() or f"/app/{_doctype_to_slug(doctype)}"
-			menu_path = _normalize_menu_path(plan.get("menu_path"), doctype)
-			return {
-				"doctype": doctype,
-				"route": route,
-				"menu_path": menu_path,
-			}
+	target = _doctype_from_plan(plan)
+	if target:
+		return target
 
-	if allow_context_fallback:
+	# For create/teach requests, force a doctype-oriented second pass so
+	# queries like "user qo'shishni o'rgat" resolve to `User` (not current page fallback).
+	forced_plan = build_navigation_plan(f"{user_message} list")
+	target = _doctype_from_plan(forced_plan)
+	if target:
+		return target
+
+	kind = str(plan.get("kind") or "").strip().lower() if isinstance(plan, dict) else ""
+	forced_kind = str(forced_plan.get("kind") or "").strip().lower() if isinstance(forced_plan, dict) else ""
+	explicit_nav_target = kind in {"doctype", "module", "workspace"} or forced_kind in {"doctype", "module", "workspace"}
+
+	if allow_context_fallback and not explicit_nav_target:
 		context_doctype = _infer_doctype_from_context(ctx)
-		if context_doctype and _is_real_doctype(context_doctype):
-			plan2 = build_navigation_plan(f"{context_doctype} list")
-			route = str(plan2.get("route") or "").strip() if isinstance(plan2, dict) else ""
-			if not route:
-				route = f"/app/{_doctype_to_slug(context_doctype)}"
-			menu_path = _normalize_menu_path(plan2.get("menu_path") if isinstance(plan2, dict) else None, context_doctype)
-			return {
-				"doctype": context_doctype,
-				"route": route,
-				"menu_path": menu_path,
-			}
+		target = _target_from_doctype(context_doctype)
+		if target:
+			return target
 
 	fallback = str(fallback_doctype or "").strip()
-	if fallback and _is_real_doctype(fallback):
-		plan3 = build_navigation_plan(f"{fallback} list")
-		route = str(plan3.get("route") or "").strip() if isinstance(plan3, dict) else ""
-		if not route:
-			route = f"/app/{_doctype_to_slug(fallback)}"
-		menu_path = _normalize_menu_path(plan3.get("menu_path") if isinstance(plan3, dict) else None, fallback)
-		return {
-			"doctype": fallback,
-			"route": route,
-			"menu_path": menu_path,
-		}
+	target = _target_from_doctype(fallback)
+	if target:
+		return target
 
 	return {}
 
