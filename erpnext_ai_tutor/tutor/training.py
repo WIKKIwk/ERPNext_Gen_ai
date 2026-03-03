@@ -43,6 +43,7 @@ AI_TARGET_ALIASES = {
 	"foydalanuvchi": "User",
 	"foydalanuvchilar": "User",
 }
+ALLOWED_INTENT_ACTIONS = {"create_record", "continue", "show_save", "other"}
 
 
 def _msg(lang: str, *, uz: str, ru: str, en: str) -> str:
@@ -196,6 +197,58 @@ def _infer_doctype_with_ai(user_message: str) -> str:
 		return ""
 	doctype_raw = str(payload.get("doctype") or "").strip()
 	return _coerce_to_real_doctype(doctype_raw)
+
+
+def _infer_training_intent_with_ai(user_message: str, *, has_active_tutorial: bool) -> Dict[str, Any]:
+	text = str(user_message or "").strip()
+	if not text:
+		return {"action": "other", "doctype": "", "confidence": 0.0}
+
+	system_msg = (
+		"You classify ERPNext tutor chat intent.\n"
+		"Return strict JSON only with this schema:\n"
+		"{\"action\":\"create_record|continue|show_save|other\",\"doctype\":\"<DocType or empty>\",\"confidence\":0.0}\n"
+		"Rules:\n"
+		"- Use semantic intent, not just keywords.\n"
+		"- action=create_record when user asks practical teaching/demonstration/filling/new record workflow.\n"
+		"- action=continue when user asks to continue next step in an already running tutorial.\n"
+		"- action=show_save when user asks where save/submit is.\n"
+		"- action=other for plain chat/small talk/non-tutorial questions.\n"
+		"- doctype must be canonical ERPNext DocType name if clear, else empty.\n"
+		"- If uncertain, confidence <= 0.4.\n"
+		"- No prose, no markdown."
+	)
+	user_payload = {
+		"text": text,
+		"has_active_tutorial": bool(has_active_tutorial),
+	}
+	try:
+		resp = call_llm(
+			messages=[
+				{"role": "system", "content": system_msg},
+				{"role": "user", "content": json.dumps(user_payload, ensure_ascii=True)},
+			],
+			max_tokens=220,
+		)
+	except Exception:
+		return {"action": "other", "doctype": "", "confidence": 0.0}
+
+	payload = _extract_json_payload(resp)
+	if not isinstance(payload, dict):
+		return {"action": "other", "doctype": "", "confidence": 0.0}
+
+	action = str(payload.get("action") or "").strip().lower()
+	if action not in ALLOWED_INTENT_ACTIONS:
+		action = "other"
+	try:
+		confidence = float(payload.get("confidence") or 0.0)
+	except Exception:
+		confidence = 0.0
+	doctype = _coerce_to_real_doctype(str(payload.get("doctype") or "").strip())
+	if confidence < 0.35:
+		action = "other"
+		doctype = ""
+	return {"action": action, "doctype": doctype, "confidence": confidence}
 
 
 def _extract_route_parts(ctx: Dict[str, Any]) -> List[str]:
@@ -478,9 +531,16 @@ def maybe_handle_training_flow(
 	pending = str(state.get("pending") or "")
 	state_doctype = str(state.get("doctype") or "")
 	state_action = str(state.get("action") or "")
+	intent = _infer_training_intent_with_ai(text, has_active_tutorial=bool(state_action and state_doctype))
+	intent_action = str(intent.get("action") or "other").strip().lower()
+	intent_doctype = str(intent.get("doctype") or "").strip()
+	create_requested = bool(CREATE_ACTION_RE.search(text)) or intent_action == "create_record"
+	continue_requested = bool(CONTINUE_ACTION_RE.search(text)) or intent_action == "continue"
+	show_save_requested = bool(SHOW_SAVE_RE.search(text)) or intent_action == "show_save"
 
 	if pending == "action":
-		target = _resolve_doctype_target(text, ctx, allow_context_fallback=False)
+		target_seed = intent_doctype or text
+		target = _resolve_doctype_target(target_seed, ctx, allow_context_fallback=False)
 		if target:
 			doctype = str(target.get("doctype") or "").strip()
 			reply = _start_tutorial_reply(lang, doctype)
@@ -495,8 +555,8 @@ def maybe_handle_training_flow(
 				guide=guide,
 				tutor_state=_coach_state(doctype, "open_and_fill_basic"),
 			)
-		if CREATE_ACTION_RE.search(text):
-			target = _resolve_doctype_target(text, ctx, allow_context_fallback=True)
+		if create_requested:
+			target = _resolve_doctype_target(target_seed, ctx, allow_context_fallback=not bool(intent_doctype))
 			if target:
 				doctype = str(target.get("doctype") or "").strip()
 				reply = _start_tutorial_reply(lang, doctype)
@@ -518,9 +578,10 @@ def maybe_handle_training_flow(
 		return _build_training_reply(reply=_action_clarify_reply(lang), tutor_state={"pending": "action"})
 
 	if pending == "target":
-		target = _resolve_doctype_target(text, ctx, allow_context_fallback=False)
-		if not target and CREATE_ACTION_RE.search(text):
-			target = _resolve_doctype_target(text, ctx, allow_context_fallback=True)
+		target_seed = intent_doctype or text
+		target = _resolve_doctype_target(target_seed, ctx, allow_context_fallback=False)
+		if not target and create_requested:
+			target = _resolve_doctype_target(target_seed, ctx, allow_context_fallback=not bool(intent_doctype))
 		if not target:
 			return _build_training_reply(
 				reply=_target_clarify_reply(lang),
@@ -540,8 +601,8 @@ def maybe_handle_training_flow(
 			tutor_state=_coach_state(doctype, "open_and_fill_basic"),
 		)
 
-	if state_action == "create_record" and state_doctype and (CONTINUE_ACTION_RE.search(text) or SHOW_SAVE_RE.search(text)):
-		stage = "show_save_only" if SHOW_SAVE_RE.search(text) else "fill_more"
+	if state_action == "create_record" and state_doctype and (continue_requested or show_save_requested):
+		stage = "show_save_only" if show_save_requested else "fill_more"
 		target = _resolve_doctype_target(state_doctype, ctx, fallback_doctype=state_doctype)
 		doctype = str(target.get("doctype") or state_doctype).strip()
 		route = str(target.get("route") or f"/app/{_doctype_to_slug(doctype)}")
@@ -554,8 +615,9 @@ def maybe_handle_training_flow(
 			tutor_state=_coach_state(doctype, stage),
 		)
 
-	if CREATE_ACTION_RE.search(text):
-		target = _resolve_doctype_target(text, ctx)
+	if create_requested or intent_doctype:
+		target_seed = intent_doctype or text
+		target = _resolve_doctype_target(target_seed, ctx, allow_context_fallback=not bool(intent_doctype))
 		if not target:
 			return _build_training_reply(
 				reply=_target_clarify_reply(lang),
