@@ -833,9 +833,10 @@
 			if (!this.$newChatBtn) return;
 			const isPending = Boolean(this._newChatPending);
 			this.$newChatBtn.classList.toggle("is-cancel-state", isPending);
+			this.$root?.classList.toggle("is-new-chat-pending", isPending);
 			this.$newChatBtn.setAttribute("aria-label", isPending ? "Cancel new chat" : "New chat");
 			this.$newChatBtn.setAttribute("title", isPending ? "Cancel new chat" : "New chat");
-			this.$newChatBtn.innerHTML = isPending ? icon("close") : icon("new_chat");
+			this.$newChatBtn.innerHTML = icon("new_chat");
 		}
 
 		markNewChatStarted() {

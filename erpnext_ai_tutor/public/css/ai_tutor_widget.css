@@ -189,7 +189,11 @@
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	transition: transform 120ms ease, filter 120ms ease, background 120ms ease;
+	transition:
+		transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+		filter 120ms ease,
+		background 120ms ease,
+		opacity 220ms ease;
 }
 
 .erpnext-ai-tutor-icon-btn {
@@ -204,7 +208,20 @@
 	justify-content: center;
 	cursor: pointer;
 	padding: 0;
-	transition: transform 120ms ease, filter 120ms ease, background 120ms ease;
+	transition:
+		transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+		filter 120ms ease,
+		background 120ms ease,
+		border-color 180ms ease;
+}
+
+.erpnext-ai-tutor-new-btn {
+	transform-origin: center;
+	will-change: transform;
+}
+
+.erpnext-ai-tutor-new-btn svg {
+	transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .erpnext-ai-tutor-icon-btn.is-cancel-state {
@@ -214,6 +231,20 @@
 
 .erpnext-ai-tutor-icon-btn.is-cancel-state:hover {
 	background: rgba(239, 68, 68, 0.2);
+}
+
+.erpnext-ai-tutor-root.is-new-chat-pending .erpnext-ai-tutor-new-btn {
+	transform: translateX(44px);
+}
+
+.erpnext-ai-tutor-root.is-new-chat-pending .erpnext-ai-tutor-new-btn svg {
+	transform: rotate(45deg) scale(0.94);
+}
+
+.erpnext-ai-tutor-root.is-new-chat-pending .erpnext-ai-tutor-close {
+	opacity: 0;
+	transform: scale(0.82);
+	pointer-events: none;
 }
 
 .erpnext-ai-tutor-close:hover,
