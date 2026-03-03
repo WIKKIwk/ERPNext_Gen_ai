@@ -1662,6 +1662,151 @@
 					};
 				}
 
+				detectStockEntryPurpose() {
+					const raw = String(this.readFieldValue("stock_entry_type") || this.readFieldValue("purpose") || "")
+						.trim()
+						.toLowerCase();
+					if (!raw) return "";
+					if (raw.includes("receipt")) return "receipt";
+					if (raw.includes("issue")) return "issue";
+					if (raw.includes("transfer")) return "transfer";
+					return "";
+				}
+
+				async fetchWarehouseCandidates() {
+					try {
+						const res = await frappe.call("frappe.client.get_list", {
+							doctype: "Warehouse",
+							fields: ["name"],
+							filters: { disabled: 0 },
+							limit_page_length: 6,
+							order_by: "modified desc",
+						});
+						const rows = Array.isArray(res?.message) ? res.message : [];
+						return rows.map((x) => String(x?.name || "").trim()).filter(Boolean);
+					} catch {
+						return [];
+					}
+				}
+
+				async setDocFieldValue(fieldname, value, label) {
+					const frm = window.cur_frm;
+					if (!frm || !fieldname) return false;
+					try {
+						await frm.set_value(fieldname, value);
+						await this.sleep(120);
+						const df = this.getFieldMeta(fieldname);
+						const after = this.readFieldValue(fieldname);
+						const ok = this.isFieldValueFilled(df, after) && !this.isControlInvalid(fieldname);
+						if (ok) this.emitProgress(`✅ **${label || fieldname}** maydoni \`${String(value || "")}\` bilan to'ldirildi.`);
+						return ok;
+					} catch {
+						return false;
+					}
+				}
+
+				async setStockRowValue(row, fieldname, value, label) {
+					if (!row || !fieldname) return false;
+					try {
+						await frappe.model.set_value(row.doctype, row.name, fieldname, value);
+						await this.sleep(120);
+						const after = String(row[fieldname] ?? "").trim();
+						const ok = Boolean(after);
+						if (ok && label) this.emitProgress(`✅ **${label}** qatori \`${String(value || "")}\` bilan to'ldirildi.`);
+						return ok;
+					} catch {
+						return false;
+					}
+				}
+
+				async fillStockEntryLineDemo() {
+					const frm = window.cur_frm;
+					if (!frm || String(frm.doctype || "").trim().toLowerCase() !== "stock entry") {
+						return { filled: 0, filledLabels: [], blockedLinkHints: [] };
+					}
+
+					const filledLabels = [];
+					const blockedLinkHints = [];
+					let filled = 0;
+
+					const purpose = this.detectStockEntryPurpose();
+					const whCandidates = await this.fetchWarehouseCandidates();
+					let sourceWh = String(this.readFieldValue("from_warehouse") || "").trim();
+					let targetWh = String(this.readFieldValue("to_warehouse") || "").trim();
+					if (!sourceWh) sourceWh = whCandidates[0] || "";
+					if (!targetWh) targetWh = whCandidates.find((x) => x && x !== sourceWh) || whCandidates[0] || "";
+
+					if ((purpose === "issue" || purpose === "transfer") && sourceWh && !String(this.readFieldValue("from_warehouse") || "").trim()) {
+						if (await this.setDocFieldValue("from_warehouse", sourceWh, "Default Source Warehouse")) {
+							filled += 1;
+							filledLabels.push("Default Source Warehouse");
+						}
+					}
+					if ((purpose === "receipt" || purpose === "transfer") && targetWh && !String(this.readFieldValue("to_warehouse") || "").trim()) {
+						if (await this.setDocFieldValue("to_warehouse", targetWh, "Default Target Warehouse")) {
+							filled += 1;
+							filledLabels.push("Default Target Warehouse");
+						}
+					}
+
+					const itemCode = await this.fetchLinkDemoValue("Item", "");
+					if (!itemCode) {
+						blockedLinkHints.push("**Item Code** (Link: Item)");
+						return { filled, filledLabels, blockedLinkHints };
+					}
+
+					let row = Array.isArray(frm.doc?.items) ? frm.doc.items[0] : null;
+					if (!row) {
+						row = frm.add_child("items");
+						frm.refresh_field("items");
+						await this.sleep(120);
+					}
+					if (!row) return { filled, filledLabels, blockedLinkHints };
+
+					if (!String(row.item_code || "").trim()) {
+						if (await this.setStockRowValue(row, "item_code", itemCode, "Item Code")) {
+							filled += 1;
+							filledLabels.push("Item Code");
+						}
+					}
+					const qtyRaw = Number(row.qty || 0);
+					if (!(qtyRaw > 0)) {
+						if (await this.setStockRowValue(row, "qty", 1, "Qty")) {
+							filled += 1;
+							filledLabels.push("Qty");
+						}
+					}
+
+					if (purpose === "receipt" || purpose === "transfer") {
+						const rowTarget = String(row.t_warehouse || "").trim();
+						const target = String(this.readFieldValue("to_warehouse") || targetWh || "").trim();
+						if (!rowTarget && target) {
+							if (await this.setStockRowValue(row, "t_warehouse", target, "Target Warehouse")) {
+								filled += 1;
+								filledLabels.push("Target Warehouse");
+							}
+						}
+					}
+					if (purpose === "issue" || purpose === "transfer") {
+						const rowSource = String(row.s_warehouse || "").trim();
+						const source = String(this.readFieldValue("from_warehouse") || sourceWh || "").trim();
+						if (!rowSource && source) {
+							if (await this.setStockRowValue(row, "s_warehouse", source, "Source Warehouse")) {
+								filled += 1;
+								filledLabels.push("Source Warehouse");
+							}
+						}
+					}
+
+					frm.refresh_field("items");
+					await this.sleep(120);
+					return {
+						filled,
+						filledLabels,
+						blockedLinkHints: [...new Set(blockedLinkHints)],
+					};
+				}
+
 			async runCreateRecordTutorial(guide) {
 				if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
 				const doctype = this.getTutorialDoctype(guide);
@@ -1767,12 +1912,27 @@
 						stage === "fill_more" ? "fill_more" : "open_and_fill_basic",
 						planResult.plan
 					);
-					const filled = Number(fillResult?.filled || 0);
-					const filledLabels = Array.isArray(fillResult?.filledLabels) ? fillResult.filledLabels : [];
-					const missingRequiredLabels = Array.isArray(fillResult?.missingRequiredLabels)
-						? fillResult.missingRequiredLabels
-						: [];
-					const blockedLinkHints = Array.isArray(fillResult?.blockedLinkHints) ? fillResult.blockedLinkHints : [];
+					let filled = Number(fillResult?.filled || 0);
+					const filledLabels = Array.isArray(fillResult?.filledLabels) ? [...fillResult.filledLabels] : [];
+					let blockedLinkHints = Array.isArray(fillResult?.blockedLinkHints) ? [...fillResult.blockedLinkHints] : [];
+
+					if (String(doctype || "").trim().toLowerCase() === "stock entry") {
+						this.emitProgress("🧠 Stock Entry uchun qator maydonlarini ham aqlli to'ldiraman (Item, Qty, Warehouse).");
+						const stockResult = await this.fillStockEntryLineDemo();
+						const extraFilled = Number(stockResult?.filled || 0);
+						if (extraFilled > 0) filled += extraFilled;
+						const extraLabels = Array.isArray(stockResult?.filledLabels) ? stockResult.filledLabels : [];
+						for (const label of extraLabels) {
+							if (label && !filledLabels.includes(label)) filledLabels.push(label);
+						}
+						const extraBlocked = Array.isArray(stockResult?.blockedLinkHints) ? stockResult.blockedLinkHints : [];
+						blockedLinkHints = [...new Set([...blockedLinkHints, ...extraBlocked])];
+					}
+
+					const missingRequiredLabels = this.collectMissingRequiredFields(doctype)
+						.map((x) => String(x.label || x.fieldname || "").trim())
+						.filter(Boolean);
+					blockedLinkHints = [...new Set(blockedLinkHints)];
 					const saveBtn = this.findSaveActionButton();
 					if (saveBtn) {
 						await this.focusElement(saveBtn, 'Saqlash joyini ham ko\'rsatdim (bosmayman).', {

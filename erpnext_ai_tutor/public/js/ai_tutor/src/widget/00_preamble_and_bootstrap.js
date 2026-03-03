@@ -150,6 +150,7 @@
 			this._boundGlobalKeydown = (ev) => this.onGlobalKeydown(ev);
 			this._boundDrawerKeydown = (ev) => this.onDrawerKeydown(ev);
 			this._lastFocusedBeforeOpen = null;
+			this.guidedRunActive = false;
 				this.activeField = null;
 				this.routeKey = this.getRouteKey();
 				this._welcomeShownNoMarker = false;

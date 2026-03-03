@@ -150,6 +150,7 @@
 			this._boundGlobalKeydown = (ev) => this.onGlobalKeydown(ev);
 			this._boundDrawerKeydown = (ev) => this.onDrawerKeydown(ev);
 			this._lastFocusedBeforeOpen = null;
+			this.guidedRunActive = false;
 				this.activeField = null;
 				this.routeKey = this.getRouteKey();
 				this._welcomeShownNoMarker = false;
@@ -785,6 +786,9 @@
 			const triggerEl = opts?.triggerEl || null;
 				const messageTs = this.normalizeMessageTs(opts?.messageTs);
 				this.setGuideButtonBusy(triggerEl, true);
+				const prevAutoHelpDisabledUntil = Number(this.autoHelpDisabledUntil || 0);
+				this.guidedRunActive = true;
+				this.autoHelpDisabledUntil = Math.max(prevAutoHelpDisabledUntil, Date.now() + 45000);
 				try {
 					const runResult = await this.guideRunner.run(guide, {
 						onProgress: (text) => {
@@ -836,6 +840,8 @@
 					);
 				}
 			} finally {
+				this.guidedRunActive = false;
+				this.autoHelpDisabledUntil = Math.max(Number(this.autoHelpDisabledUntil || 0), prevAutoHelpDisabledUntil);
 				const shouldKeepBusy =
 					Boolean(triggerEl) &&
 					triggerEl.classList.contains("is-complete") &&
@@ -1670,6 +1676,7 @@
 
 		async handleEvent(ev) {
 			if (!this.isAdvancedMode()) return;
+			if (this.guidedRunActive || this.guideRunner?.running) return;
 			const now = Date.now();
 			if ((ev?.source === "msgprint" || ev?.source === "alert") && now < (this.suppressEventsUntil || 0)) {
 				return;

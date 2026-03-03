@@ -228,6 +228,7 @@
 
 		async handleEvent(ev) {
 			if (!this.isAdvancedMode()) return;
+			if (this.guidedRunActive || this.guideRunner?.running) return;
 			const now = Date.now();
 			if ((ev?.source === "msgprint" || ev?.source === "alert") && now < (this.suppressEventsUntil || 0)) {
 				return;

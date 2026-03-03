@@ -260,6 +260,9 @@
 			const triggerEl = opts?.triggerEl || null;
 				const messageTs = this.normalizeMessageTs(opts?.messageTs);
 				this.setGuideButtonBusy(triggerEl, true);
+				const prevAutoHelpDisabledUntil = Number(this.autoHelpDisabledUntil || 0);
+				this.guidedRunActive = true;
+				this.autoHelpDisabledUntil = Math.max(prevAutoHelpDisabledUntil, Date.now() + 45000);
 				try {
 					const runResult = await this.guideRunner.run(guide, {
 						onProgress: (text) => {
@@ -311,6 +314,8 @@
 					);
 				}
 			} finally {
+				this.guidedRunActive = false;
+				this.autoHelpDisabledUntil = Math.max(Number(this.autoHelpDisabledUntil || 0), prevAutoHelpDisabledUntil);
 				const shouldKeepBusy =
 					Boolean(triggerEl) &&
 					triggerEl.classList.contains("is-complete") &&
