@@ -1439,31 +1439,36 @@
 				return { plan: [], source: "fallback" };
 			}
 
-		async typeIntoInput(input, value) {
-			if (!input || value === undefined || value === null) return false;
-			const text = String(value);
-			try {
-				input.focus();
-				if (input.tagName === "SELECT") {
-					input.value = text;
+			async typeIntoInput(input, value, opts = {}) {
+				if (!input || value === undefined || value === null) return false;
+				const text = String(value);
+				const charDelay = Math.max(8, Number(opts?.char_delay_ms || 18));
+				const initialPause = Math.max(0, Number(opts?.initial_pause_ms || 0));
+				const afterTypePause = Math.max(0, Number(opts?.after_type_pause_ms || 0));
+				try {
+					input.focus();
+					if (input.tagName === "SELECT") {
+						input.value = text;
+						input.dispatchEvent(new Event("input", { bubbles: true }));
+						input.dispatchEvent(new Event("change", { bubbles: true }));
+						return true;
+					}
+					input.value = "";
 					input.dispatchEvent(new Event("input", { bubbles: true }));
+					if (initialPause) await this.sleep(initialPause);
+					for (const ch of text) {
+						if (!this.running) return false;
+						input.value += ch;
+						input.dispatchEvent(new Event("input", { bubbles: true }));
+						await this.sleep(charDelay);
+					}
+					if (afterTypePause) await this.sleep(afterTypePause);
 					input.dispatchEvent(new Event("change", { bubbles: true }));
 					return true;
+				} catch {
+					return false;
 				}
-				input.value = "";
-				input.dispatchEvent(new Event("input", { bubbles: true }));
-				for (const ch of text) {
-					if (!this.running) return false;
-					input.value += ch;
-					input.dispatchEvent(new Event("input", { bubbles: true }));
-					await this.sleep(18);
-				}
-				input.dispatchEvent(new Event("change", { bubbles: true }));
-				return true;
-			} catch {
-				return false;
 			}
-		}
 
 				getFormFieldSamplePlans(doctype, stage = "open_and_fill_basic") {
 					const dt = String(doctype || "").trim();
@@ -1712,12 +1717,33 @@
 				async setDocFieldValue(fieldname, value, label) {
 					const frm = window.cur_frm;
 					if (!frm || !fieldname) return false;
+					const stringValue = String(value ?? "");
 					try {
-						await frm.set_value(fieldname, value);
-						await this.sleep(120);
+						const input = this.findFieldInput(fieldname, { allowHidden: false });
+						if (input) {
+							const focused = await this.focusElement(input, `**${label || fieldname}** maydonini to'ldiramiz.`, {
+								click: true,
+								duration_ms: 240,
+								pre_click_pause_ms: 110,
+							});
+							if (focused) {
+								await this.typeIntoInput(input, stringValue, {
+									char_delay_ms: 34,
+									after_type_pause_ms: 90,
+								});
+								input.blur?.();
+								await this.sleep(140);
+							}
+						}
 						const df = this.getFieldMeta(fieldname);
 						const after = this.readFieldValue(fieldname);
-						const ok = this.isFieldValueFilled(df, after) && !this.isControlInvalid(fieldname);
+						let ok = this.isFieldValueFilled(df, after) && !this.isControlInvalid(fieldname);
+						if (!ok) {
+							await frm.set_value(fieldname, value);
+							await this.sleep(140);
+							const afterFallback = this.readFieldValue(fieldname);
+							ok = this.isFieldValueFilled(df, afterFallback) && !this.isControlInvalid(fieldname);
+						}
 						if (ok) this.emitProgress(`✅ **${label || fieldname}** maydoni \`${String(value || "")}\` bilan to'ldirildi.`);
 						return ok;
 					} catch {
@@ -1725,13 +1751,81 @@
 					}
 				}
 
+				async getItemsGridInput(row, fieldname) {
+					const frm = window.cur_frm;
+					if (!frm || !row || !fieldname) return null;
+					const grid = frm.fields_dict?.items?.grid;
+					if (!grid) return null;
+					try {
+						grid.refresh?.();
+					} catch {
+						// ignore
+					}
+					await this.sleep(90);
+
+					const rowName = String(row.name || "").trim();
+					if (!rowName) return null;
+					let gridRow = grid.grid_rows_by_docname?.[rowName] || null;
+					if (!gridRow && Array.isArray(grid.grid_rows)) {
+						gridRow = grid.grid_rows.find((gr) => String(gr?.doc?.name || "").trim() === rowName) || null;
+					}
+					if (gridRow?.activate) {
+						gridRow.activate();
+						await this.sleep(90);
+					}
+
+					const field = gridRow?.on_grid_fields_dict?.[fieldname] || gridRow?.columns?.[fieldname]?.field;
+					const jqInput = field?.$input;
+					let input = null;
+					if (jqInput && typeof jqInput.get === "function") input = jqInput.get(0);
+					else if (jqInput?.[0]) input = jqInput[0];
+					if (input && !input.disabled && !input.readOnly && isVisible(input)) return input;
+
+					const rowEl = document.querySelector(`.grid-row[data-name='${rowName}']`);
+					if (!rowEl) return null;
+					const selectors = [
+						`[data-fieldname='${fieldname}'] input:not([type='hidden'])`,
+						`[data-fieldname='${fieldname}'] textarea`,
+						`[data-fieldname='${fieldname}'] select`,
+					];
+					for (const sel of selectors) {
+						const candidate = rowEl.querySelector(sel);
+						if (!candidate) continue;
+						if (candidate.disabled || candidate.readOnly) continue;
+						if (!isVisible(candidate)) continue;
+						return candidate;
+					}
+					return null;
+				}
+
 				async setStockRowValue(row, fieldname, value, label) {
 					if (!row || !fieldname) return false;
+					const stringValue = String(value ?? "");
 					try {
-						await frappe.model.set_value(row.doctype, row.name, fieldname, value);
-						await this.sleep(120);
-						const after = String(row[fieldname] ?? "").trim();
-						const ok = Boolean(after);
+						const input = await this.getItemsGridInput(row, fieldname);
+						if (input) {
+							const focused = await this.focusElement(input, `**${label || fieldname}** qatorini to'ldiramiz.`, {
+								click: true,
+								duration_ms: 250,
+								pre_click_pause_ms: 110,
+							});
+							if (focused) {
+								await this.typeIntoInput(input, stringValue, {
+									char_delay_ms: 36,
+									after_type_pause_ms: 100,
+								});
+								input.blur?.();
+								await this.sleep(160);
+							}
+						}
+						let after = String(row[fieldname] ?? "").trim();
+						let ok = fieldname === "qty" ? Number(row[fieldname] || 0) > 0 : Boolean(after);
+						if (!ok) {
+							await frappe.model.set_value(row.doctype, row.name, fieldname, value);
+							await this.sleep(140);
+							after = String(row[fieldname] ?? "").trim();
+							ok = fieldname === "qty" ? Number(row[fieldname] || 0) > 0 : Boolean(after);
+						}
 						if (ok && label) this.emitProgress(`✅ **${label}** qatori \`${String(value || "")}\` bilan to'ldirildi.`);
 						return ok;
 					} catch {
