@@ -173,13 +173,24 @@ apps/erpnext_ai_tutor/
     ├── api.py .......................... Whitelisted endpoints + sanitization + LLM calls
     ├── public/js/ai_tutor/
     │   ├── utils.js ..................... Shared constants/helpers + context snapshot builders
-    │   ├── widget.js .................... Widget class (UI/state/hooks/auto-help logic)
+    │   ├── guide.js ..................... Runtime combined guided cursor file
+    │   ├── widget_core.js ............... Runtime combined widget core file
+    │   ├── widget.js .................... Thin compatibility shim
+    │   ├── src/guide/*.js ............... Editable split source parts (guide)
+    │   ├── src/widget/*.js .............. Editable split source parts (widget)
     │   └── boot.js ...................... Desk bootstrap entrypoint
     ├── public/css/ai_tutor_widget.css .. UI styling
     ├── tutor/ ........................... Backend helper modules (language/intent/context/LLM/UI)
     └── erpnext_ai_tutor/doctype/ai_tutor_settings/
         ├── ai_tutor_settings.json ...... Settings schema + permissions
         └── ai_tutor_settings.py ........ Defaults + config helpers
+```
+
+Frontend split rebuild:
+
+```bash
+cd apps/erpnext_ai_tutor
+./scripts/rebuild_frontend_parts.sh
 ```
 
 ---

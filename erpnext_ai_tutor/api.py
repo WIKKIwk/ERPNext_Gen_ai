@@ -40,6 +40,7 @@ from erpnext_ai_tutor.tutor.navigation import (
 	build_navigation_plan,
 	build_navigation_reply_from_plan,
 )
+from erpnext_ai_tutor.tutor.training import maybe_handle_training_flow
 from erpnext_ai_tutor.tutor.llm import call_llm, get_ai_provider_config
 from erpnext_ai_tutor.tutor.ui import (
 	enforce_primary_action_label,
@@ -187,7 +188,20 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 				lang = raw_ui_lang
 
 	if is_greeting_only(user_message):
-		return {"ok": True, "reply": reply_text("greeting", lang=lang, emoji_style=emoji_style)}
+		payload: Dict[str, Any] = {"ok": True, "reply": reply_text("greeting", lang=lang, emoji_style=emoji_style)}
+		pending_state = ctx.get("tutor_state") if isinstance(ctx, dict) else None
+		if isinstance(pending_state, dict) and str(pending_state.get("pending") or "").strip():
+			payload["tutor_state"] = None
+		return payload
+
+	training_flow = maybe_handle_training_flow(
+		user_message,
+		ctx,
+		lang=lang,
+		advanced_mode=advanced_mode,
+	)
+	if training_flow:
+		return training_flow
 
 	nav_plan: Dict[str, Any] = {}
 	nav_hint = ""

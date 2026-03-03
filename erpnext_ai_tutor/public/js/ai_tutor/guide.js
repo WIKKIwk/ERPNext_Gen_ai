@@ -55,11 +55,27 @@
 				.map((x) => String(x || "").trim())
 				.filter(Boolean)
 				.slice(0, 6);
+			const tutorialRaw = raw.tutorial;
+			let tutorial = null;
+			if (tutorialRaw && typeof tutorialRaw === "object") {
+				const mode = String(tutorialRaw.mode || "").trim().toLowerCase();
+				const stageRaw = String(tutorialRaw.stage || "open_and_fill_basic").trim().toLowerCase();
+				const allowedStages = new Set(["open_and_fill_basic", "fill_more", "show_save_only"]);
+				const stage = allowedStages.has(stageRaw) ? stageRaw : "open_and_fill_basic";
+				if (mode === "create_record") {
+					tutorial = {
+						mode,
+						stage,
+						doctype: String(tutorialRaw.doctype || "").trim(),
+					};
+				}
+			}
 			return {
 				type: "navigation",
 				route,
 				target_label: String(raw.target_label || "").trim(),
 				menu_path,
+				tutorial,
 			};
 		}
 
@@ -758,6 +774,10 @@
 			if (!(clickable === target || target.contains(clickable) || clickable.contains(target))) {
 				return false;
 			}
+			// Safety boundary: never auto-click Save/Submit style actions.
+			if (this.isForbiddenActionElement(clickable)) {
+				return false;
+			}
 
 			try {
 				if (typeof PointerEvent === "function") {
@@ -845,6 +865,273 @@
 				return clicked;
 			}
 			return true;
+		}
+
+		getElementLabel(el) {
+			if (!el) return "";
+			const raw =
+				el.getAttribute?.("data-label") ||
+				el.getAttribute?.("aria-label") ||
+				el.getAttribute?.("title") ||
+				el.textContent ||
+				"";
+			return String(raw).replace(/\s+/g, " ").trim();
+		}
+
+		isDangerActionLabel(label) {
+			const text = normalizeText(label);
+			if (!text) return false;
+			return /\b(save|submit|saqla|saqlash|сохран|провест|отправ)\b/i.test(text);
+		}
+
+		isForbiddenActionElement(el) {
+			const label = this.getElementLabel(el);
+			return this.isDangerActionLabel(label);
+		}
+
+		isCreateTutorial(guide) {
+			return String(guide?.tutorial?.mode || "").trim().toLowerCase() === "create_record";
+		}
+
+		doctypeToRouteSlug(doctype) {
+			return String(doctype || "")
+				.trim()
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, "-")
+				.replace(/^-+|-+$/g, "");
+		}
+
+		getTutorialDoctype(guide) {
+			return String(guide?.tutorial?.doctype || guide?.target_label || "").trim();
+		}
+
+		isOnDoctypeNewForm(doctype) {
+			const slug = this.doctypeToRouteSlug(doctype);
+			if (!slug) return false;
+			const path = this.normalizePath(window.location.pathname || "");
+			if (path.startsWith(`/app/${slug}/new-`)) return true;
+			try {
+				const route = Array.isArray(frappe?.get_route?.()) ? frappe.get_route() : [];
+				if (!route.length) return false;
+				const head = String(route[0] || "").trim().toLowerCase();
+				const second = String(route[1] || "").trim().toLowerCase();
+				if (head === "form" && second === String(doctype || "").trim().toLowerCase()) return true;
+				if (head === slug && second.startsWith("new-")) return true;
+			} catch {
+				// ignore
+			}
+			return false;
+		}
+
+		findCreateActionButton() {
+			const roots = [
+				document.querySelector(".page-head .page-actions"),
+				document.querySelector(".layout-main .page-actions"),
+				document.querySelector(".page-actions"),
+			].filter(Boolean);
+			const createRe = /\b(add|new|create|yangi|qo['’]?sh|добав|созд)\b/i;
+			let fallbackPrimary = null;
+			for (const root of roots) {
+				const nodes = root.querySelectorAll("button, a.btn, [role='button']");
+				for (const node of nodes) {
+					const el = getClickable(node) || node;
+					if (!el || !isVisible(el)) continue;
+					if (this.isForbiddenActionElement(el)) continue;
+					const label = this.getElementLabel(el);
+					if (!label) continue;
+					if (el.matches?.(".primary-action, .btn-primary") && !fallbackPrimary) {
+						fallbackPrimary = el;
+					}
+					if (createRe.test(label)) return el;
+				}
+			}
+			return fallbackPrimary;
+		}
+
+		findSaveActionButton() {
+			const roots = [
+				document.querySelector(".page-head .page-actions"),
+				document.querySelector(".layout-main .page-actions"),
+				document.querySelector(".page-actions"),
+			].filter(Boolean);
+			for (const root of roots) {
+				const nodes = root.querySelectorAll("button, a.btn, [role='button']");
+				for (const node of nodes) {
+					const el = getClickable(node) || node;
+					if (!el || !isVisible(el)) continue;
+					const label = this.getElementLabel(el);
+					if (this.isDangerActionLabel(label)) return el;
+				}
+			}
+			return null;
+		}
+
+		findFieldInput(fieldname) {
+			const key = String(fieldname || "").trim();
+			if (!key) return null;
+			const selectors = [
+				`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
+				`.frappe-control[data-fieldname='${key}'] textarea`,
+				`.frappe-control[data-fieldname='${key}'] select`,
+				`.control-input-wrapper [data-fieldname='${key}'] input:not([type='hidden'])`,
+			];
+			for (const sel of selectors) {
+				const el = document.querySelector(sel);
+				if (!el || !isVisible(el)) continue;
+				if (el.disabled || el.readOnly) continue;
+				return el;
+			}
+			return null;
+		}
+
+		async typeIntoInput(input, value) {
+			if (!input || value === undefined || value === null) return false;
+			const text = String(value);
+			try {
+				input.focus();
+				if (input.tagName === "SELECT") {
+					input.value = text;
+					input.dispatchEvent(new Event("input", { bubbles: true }));
+					input.dispatchEvent(new Event("change", { bubbles: true }));
+					return true;
+				}
+				input.value = "";
+				input.dispatchEvent(new Event("input", { bubbles: true }));
+				for (const ch of text) {
+					if (!this.running) return false;
+					input.value += ch;
+					input.dispatchEvent(new Event("input", { bubbles: true }));
+					await this.sleep(18);
+				}
+				input.dispatchEvent(new Event("change", { bubbles: true }));
+				return true;
+			} catch {
+				return false;
+			}
+		}
+
+		getFormFieldSamplePlans(doctype, stage = "open_and_fill_basic") {
+			const dt = String(doctype || "").trim();
+			const lower = dt.toLowerCase();
+			if (lower === "item") {
+				const base = [
+					{ fieldname: "item_code", value: "DEMO-ITEM-001", message: 'Item Code maydonini to\'ldiramiz.' },
+					{ fieldname: "item_name", value: "Demo Item", message: "Item Name maydonini to'ldiramiz." },
+					{ fieldname: "description", value: "AI Tutor orqali yaratilgan demo yozuv.", message: "Description maydonini to'ldiramiz." },
+				];
+				return stage === "fill_more" ? base.slice(2) : base.slice(0, 2);
+			}
+
+			const frm = window.cur_frm;
+			if (!frm || String(frm.doctype || "").trim().toLowerCase() !== lower) return [];
+			const fields = Array.isArray(frm.meta?.fields) ? frm.meta.fields : [];
+			const plans = [];
+			for (const df of fields) {
+				if (!df || !df.fieldname) continue;
+				if (df.hidden || df.read_only) continue;
+				const ft = String(df.fieldtype || "").trim();
+				if (!["Data", "Small Text", "Text", "Int", "Float", "Currency"].includes(ft)) continue;
+				const fieldname = String(df.fieldname || "").trim();
+				if (!fieldname || fieldname === "naming_series") continue;
+				const currentVal = frm.doc ? frm.doc[fieldname] : null;
+				if (currentVal !== null && currentVal !== undefined && String(currentVal).trim()) continue;
+				let sample = "Demo";
+				if (ft === "Int" || ft === "Float" || ft === "Currency") sample = "1";
+				else sample = `Demo ${String(df.label || fieldname).trim()}`;
+				plans.push({
+					fieldname,
+					value: sample,
+					message: `${String(df.label || fieldname).trim()} maydonini to'ldiramiz.`,
+				});
+				if (plans.length >= 3) break;
+			}
+			return stage === "fill_more" ? plans.slice(1) : plans.slice(0, 2);
+		}
+
+		async fillFormFields(doctype, stage = "open_and_fill_basic") {
+			const plans = this.getFormFieldSamplePlans(doctype, stage);
+			let filled = 0;
+			for (const plan of plans) {
+				if (!this.running) break;
+				const input = this.findFieldInput(plan.fieldname);
+				if (!input) continue;
+				const focused = await this.focusElement(input, String(plan.message || "Maydonni to'ldiramiz."), {
+					click: true,
+					duration_ms: 260,
+					pre_click_pause_ms: 110,
+				});
+				if (!focused) continue;
+				const ok = await this.typeIntoInput(input, plan.value);
+				if (ok) {
+					filled += 1;
+					await this.sleep(120);
+				}
+			}
+			return filled;
+		}
+
+		async runCreateRecordTutorial(guide) {
+			if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
+			const doctype = this.getTutorialDoctype(guide);
+			const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
+
+			if (!this.isOnDoctypeNewForm(doctype)) {
+				if (guide.route && !this.isAtRoute(guide.route)) {
+					const openedList = await this.navigate(guide.route);
+					if (!openedList) {
+						return { ok: false, message: "Kerakli bo'limni ochib bo'lmadi, qayta urinib ko'ring." };
+					}
+				}
+				const createBtn = await this.waitFor(() => this.findCreateActionButton(), 3200, 120);
+				if (!createBtn) {
+					return { ok: false, message: 'Yangi yozuv ochish tugmasini topa olmadim ("Add/New/Create").' };
+				}
+				const clicked = await this.focusElement(createBtn, 'Yangi yozuv ochish uchun "Add/New" tugmasini bosamiz.', {
+					click: true,
+					duration_ms: 320,
+					pre_click_pause_ms: 120,
+				});
+				if (!clicked) {
+					return { ok: false, message: "Yangi yozuv tugmasini xavfsiz bosib bo'lmadi." };
+				}
+				await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
+			}
+
+			if (!this.isOnDoctypeNewForm(doctype)) {
+				return { ok: false, message: "Yangi forma ochilmadi. Iltimos yana bir bor urining." };
+			}
+
+			if (stage === "show_save_only") {
+				const saveBtn = await this.waitFor(() => this.findSaveActionButton(), 2000, 120);
+				if (saveBtn) {
+					await this.focusElement(saveBtn, 'Mana shu joyda "Save/Submit" tugmasi turadi (bosmayman).', {
+						click: false,
+						duration_ms: 280,
+					});
+				}
+				return {
+					ok: true,
+					reached_target: true,
+					message: 'Save/Submit tugmasini ko\'rsatdim. Xavfsizlik uchun uni avtomatik bosmadim.',
+				};
+			}
+
+			const filled = await this.fillFormFields(doctype, stage === "fill_more" ? "fill_more" : "open_and_fill_basic");
+			const saveBtn = this.findSaveActionButton();
+			if (saveBtn) {
+				await this.focusElement(saveBtn, 'Saqlash joyini ham ko\'rsatdim (bosmayman).', {
+					click: false,
+					duration_ms: 220,
+				});
+			}
+			return {
+				ok: true,
+				reached_target: true,
+				message:
+					filled > 0
+						? `${filled} ta maydonni demo tarzda to'ldirib ko'rsatdim. Keyingi qadamni ham aytsangiz davom ettiraman.`
+						: "Forma ochildi, lekin avtomatik to'ldirishga mos maydon topilmadi. Qaysi maydonni to'ldiray?",
+			};
 		}
 
 		getSearchQuery(guide, step) {
@@ -1211,7 +1498,8 @@
 		async run(guideRaw) {
 			const guide = this.normalizeGuide(guideRaw);
 			if (!guide) return { ok: false, message: "Guide payload noto'g'ri." };
-			if (guide.route && this.isAtRoute(guide.route)) {
+			const isTutorial = this.isCreateTutorial(guide);
+			if (!isTutorial && guide.route && this.isAtRoute(guide.route)) {
 				return {
 					ok: true,
 					reached_target: true,
@@ -1230,106 +1518,125 @@
 			};
 
 			try {
-				const steps = this.buildSteps(guide);
-				for (let i = 0; i < steps.length; i += 1) {
-					const step = steps[i];
-					if (!this.running) break;
-					if (step.type === "focus") {
-						if (step.skip_if_on_route && this.isAtRoute(guide.route)) {
-							continue;
-						}
-						const label = String(step.label || "").trim();
-						if (!label) continue;
-						const timeoutMs = Number(step.timeout_ms) > 0 ? Number(step.timeout_ms) : step.optional ? 900 : 2600;
-						let match = await this.waitFor(() => this.findStepCandidate(step, { allowHidden: false }), timeoutMs, 100);
-						if (!match && step.section_label) {
-							await this.ensureSidebarSectionOpen(step.section_label);
-							await this.sleep(90);
-							match = this.findStepCandidate(step, { allowHidden: true }) || match;
-							if (match && !match.visible) {
-								await this.expandCollapsedAncestors(match.el);
+				const skipNavigation = Boolean(isTutorial && guide.route && this.isAtRoute(guide.route));
+				if (!skipNavigation) {
+					const steps = this.buildSteps(guide);
+					for (let i = 0; i < steps.length; i += 1) {
+						const step = steps[i];
+						if (!this.running) break;
+						if (step.type === "focus") {
+							if (step.skip_if_on_route && this.isAtRoute(guide.route)) {
+								continue;
+							}
+							const label = String(step.label || "").trim();
+							if (!label) continue;
+							const timeoutMs = Number(step.timeout_ms) > 0 ? Number(step.timeout_ms) : step.optional ? 900 : 2600;
+							let match = await this.waitFor(() => this.findStepCandidate(step, { allowHidden: false }), timeoutMs, 100);
+							if (!match && step.section_label) {
+								await this.ensureSidebarSectionOpen(step.section_label);
+								await this.sleep(90);
+								match = this.findStepCandidate(step, { allowHidden: true }) || match;
+								if (match && !match.visible) {
+									await this.expandCollapsedAncestors(match.el);
+									await this.sleep(90);
+									match = this.findStepCandidate(step, { allowHidden: false });
+								}
+							}
+							if (!match) {
+								await this.revealLabel(label);
 								await this.sleep(90);
 								match = this.findStepCandidate(step, { allowHidden: false });
 							}
-						}
-						if (!match) {
-							await this.revealLabel(label);
-							await this.sleep(90);
-							match = this.findStepCandidate(step, { allowHidden: false });
-						}
-						if (!match && String(step.scope || "").trim().toLowerCase() === "sidebar") {
-							const homeOpened = await this.openMainMenuFromLogo();
-							if (homeOpened) {
-								await this.sleep(110);
-								match = await this.waitFor(() => this.findStepCandidate(step, { allowHidden: false }), 2000, 100);
-							}
-						}
-						const el = match?.el || null;
-						if (!el) {
-							if (!step.optional) {
-								const openedBySearch = await this.trySearchFallback(step, guide);
-								if (openedBySearch) {
-									continue;
+							if (!match && String(step.scope || "").trim().toLowerCase() === "sidebar") {
+								const homeOpened = await this.openMainMenuFromLogo();
+								if (homeOpened) {
+									await this.sleep(110);
+									match = await this.waitFor(() => this.findStepCandidate(step, { allowHidden: false }), 2000, 100);
 								}
-								result = {
-									ok: false,
-									message: this.buildFailureMessage(step, guide, "not_found"),
-								};
-								break;
 							}
-							continue;
-						}
-						const clicked = await this.focusElement(el, step.message, { click: Boolean(step.click) });
-						if (step.click && !clicked) {
-							if (!step.optional) {
-								result = {
-									ok: false,
-									message: this.buildFailureMessage(step, guide, "not_clickable"),
-								};
-								break;
-							}
-							continue;
-						}
-						if (clicked && step.click && step.route) {
-							const opened = await this.waitFor(() => this.isAtRoute(step.route), 2200, 110);
-							const isLast = i === steps.length - 1;
-							if (!opened && isLast) {
-								const openedBySearch = await this.trySearchFallback(step, guide);
-								if (openedBySearch) {
-									continue;
+							const el = match?.el || null;
+							if (!el) {
+								if (!step.optional) {
+									const openedBySearch = await this.trySearchFallback(step, guide);
+									if (openedBySearch) {
+										continue;
+									}
+									result = {
+										ok: false,
+										message: this.buildFailureMessage(step, guide, "not_found"),
+									};
+									break;
 								}
-								result = {
-									ok: false,
-									message: this.buildFailureMessage(step, guide, "not_opened"),
-								};
-								break;
-							}
-						}
-						continue;
-					}
-					if (step.type === "navigate") {
-						const opened = await this.navigate(step.route);
-						if (!opened) {
-							const openedBySearch = await this.trySearchFallback(
-								{ label: String(guide?.target_label || "").trim(), message: "Qidiruv fallbackni ishga tushiramiz." },
-								guide
-							);
-							if (openedBySearch) {
 								continue;
 							}
-							result = {
-								ok: false,
-								message: `Men "${step.route}" uchun bosiladigan tugmani topa olmadim. Layout yoki ruxsatni tekshiring.`,
-							};
-							break;
+							const clicked = await this.focusElement(el, step.message, { click: Boolean(step.click) });
+							if (step.click && !clicked) {
+								if (!step.optional) {
+									result = {
+										ok: false,
+										message: this.buildFailureMessage(step, guide, "not_clickable"),
+									};
+									break;
+								}
+								continue;
+							}
+							if (clicked && step.click && step.route) {
+								const opened = await this.waitFor(() => this.isAtRoute(step.route), 2200, 110);
+								const isLast = i === steps.length - 1;
+								if (!opened && isLast) {
+									const openedBySearch = await this.trySearchFallback(step, guide);
+									if (openedBySearch) {
+										continue;
+									}
+									result = {
+										ok: false,
+										message: this.buildFailureMessage(step, guide, "not_opened"),
+									};
+									break;
+								}
+							}
+							continue;
 						}
-						continue;
+						if (step.type === "navigate") {
+							const opened = await this.navigate(step.route);
+							if (!opened) {
+								const openedBySearch = await this.trySearchFallback(
+									{ label: String(guide?.target_label || "").trim(), message: "Qidiruv fallbackni ishga tushiramiz." },
+									guide
+								);
+								if (openedBySearch) {
+									continue;
+								}
+								result = {
+									ok: false,
+									message: `Men "${step.route}" uchun bosiladigan tugmani topa olmadim. Layout yoki ruxsatni tekshiring.`,
+								};
+								break;
+							}
+							continue;
+						}
+						if (step.type === "confirm") {
+							const heading = await this.waitFor(() => this.findHeading(step.label), 3800, 120);
+							if (heading) {
+								await this.focusElement(heading, step.message, { click: false });
+							}
+						}
 					}
-					if (step.type === "confirm") {
-						const heading = await this.waitFor(() => this.findHeading(step.label), 3800, 120);
-						if (heading) {
-							await this.focusElement(heading, step.message, { click: false });
-						}
+				}
+				if (result.ok && isTutorial) {
+					const tutorialResult = await this.runCreateRecordTutorial(guide);
+					if (!tutorialResult?.ok) {
+						result = {
+							ok: false,
+							message: String(tutorialResult?.message || "Tutorial bosqichini bajarib bo'lmadi."),
+							reached_target: false,
+							already_there: false,
+						};
+					} else {
+						result.ok = true;
+						result.reached_target = Boolean(tutorialResult?.reached_target);
+						result.already_there = false;
+						result.message = String(tutorialResult?.message || "");
 					}
 				}
 				await this.sleep(420);
