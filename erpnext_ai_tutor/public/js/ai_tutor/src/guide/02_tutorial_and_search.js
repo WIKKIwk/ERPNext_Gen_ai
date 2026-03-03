@@ -497,6 +497,9 @@
 				async resolvePlanValue(df, rawValue) {
 					const fieldtype = String(df?.fieldtype || "").trim();
 					const fieldname = String(df?.fieldname || "").trim().toLowerCase();
+					if (fieldname === "stock_entry_type") {
+						return await this.resolveSafeStockEntryType(rawValue);
+					}
 					if (fieldtype === "Link") {
 						const linkDoctype = String(df?.options || "").trim();
 						const hint = String(rawValue || "").trim();
@@ -515,6 +518,23 @@
 						return wanted && /^-?\d+(\.\d+)?$/.test(wanted) ? wanted : "1";
 					}
 					return String(rawValue || "").trim();
+				}
+
+				async resolveSafeStockEntryType(rawValue) {
+					const preferred = ["Material Receipt", "Material Transfer", "Material Issue"];
+					const wanted = String(rawValue || "").trim().toLowerCase();
+					if (wanted) {
+						const exact = preferred.find((x) => x.toLowerCase() === wanted);
+						if (exact) {
+							const matched = await this.fetchLinkDemoValue("Stock Entry Type", exact);
+							if (matched) return matched;
+						}
+					}
+					for (const option of preferred) {
+						const matched = await this.fetchLinkDemoValue("Stock Entry Type", option);
+						if (matched) return matched;
+					}
+					return preferred[0];
 				}
 
 				async requestAIFieldPlan(doctype, stage) {
@@ -845,6 +865,15 @@
 					const filledLabels = [];
 					const blockedLinkHints = [];
 					let filled = 0;
+
+					const currentType = String(this.readFieldValue("stock_entry_type") || "").trim();
+					const safeType = await this.resolveSafeStockEntryType(currentType);
+					if (safeType && currentType !== safeType) {
+						if (await this.setDocFieldValue("stock_entry_type", safeType, "Stock Entry Type")) {
+							filled += 1;
+							filledLabels.push("Stock Entry Type");
+						}
+					}
 
 					const purpose = this.detectStockEntryPurpose();
 					const whCandidates = await this.fetchWarehouseCandidates();
