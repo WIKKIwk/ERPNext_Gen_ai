@@ -24,7 +24,6 @@ from erpnext_ai_tutor.tutor.intents import (
 	WHICH_FIELD_RE,
 	is_auto_help,
 	is_greeting_only,
-	is_navigation_lookup,
 	should_offer_navigation_guide,
 	wants_troubleshooting,
 )
