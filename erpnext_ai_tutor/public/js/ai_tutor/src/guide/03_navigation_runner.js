@@ -380,7 +380,7 @@
 					}
 				}
 				await this.sleep(420);
-				if (guide.route && this.isAtRoute(guide.route)) {
+				if (!isTutorial && guide.route && this.isAtRoute(guide.route)) {
 					result.ok = true;
 					result.reached_target = true;
 					result.already_there = false;

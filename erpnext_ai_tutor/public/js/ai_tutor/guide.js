@@ -966,10 +966,10 @@
 			return null;
 		}
 
-		findFieldInput(fieldname) {
-			const key = String(fieldname || "").trim();
-			if (!key) return null;
-			const selectors = [
+			findFieldInput(fieldname) {
+				const key = String(fieldname || "").trim();
+				if (!key) return null;
+				const selectors = [
 				`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
 				`.frappe-control[data-fieldname='${key}'] textarea`,
 				`.frappe-control[data-fieldname='${key}'] select`,
@@ -980,9 +980,86 @@
 				if (!el || !isVisible(el)) continue;
 				if (el.disabled || el.readOnly) continue;
 				return el;
+				}
+				return null;
 			}
-			return null;
-		}
+
+			getQuickEntryDialog() {
+				const selectors = [
+					".modal.show .quick-entry-dialog",
+					".modal.show .quick-entry-layout",
+					".modal.show .modal-content",
+					".modal.show",
+				];
+				for (const sel of selectors) {
+					const el = document.querySelector(sel);
+					if (el && isVisible(el)) return el;
+				}
+				return null;
+			}
+
+			isQuickEntryOpen() {
+				return Boolean(this.getQuickEntryDialog());
+			}
+
+			findQuickEntryFieldInput(fieldname) {
+				const key = String(fieldname || "").trim();
+				if (!key) return null;
+				const dialog = this.getQuickEntryDialog();
+				if (!dialog) return null;
+				const selectors = [
+					`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
+					`.frappe-control[data-fieldname='${key}'] textarea`,
+					`.frappe-control[data-fieldname='${key}'] select`,
+				];
+				for (const sel of selectors) {
+					const el = dialog.querySelector(sel);
+					if (!el || !isVisible(el)) continue;
+					if (el.disabled || el.readOnly) continue;
+					return el;
+				}
+				return null;
+			}
+
+			findQuickEntryActionButton(kind = "edit_full_form") {
+				const dialog = this.getQuickEntryDialog();
+				if (!dialog) return null;
+				const nodes = dialog.querySelectorAll("button, a.btn, [role='button']");
+				const kindNorm = String(kind || "").trim().toLowerCase();
+				const editRe = /\b(edit\s*full\s*form|full\s*form|to['’]?liq\s*forma|полная\s*форма)\b/i;
+				const saveRe = /\b(save|submit|saqla|saqlash|сохран|провест|отправ)\b/i;
+				for (const node of nodes) {
+					const el = getClickable(node) || node;
+					if (!el || !isVisible(el)) continue;
+					const label = this.getElementLabel(el);
+					if (!label) continue;
+					if (kindNorm === "edit_full_form" && editRe.test(label)) return el;
+					if (kindNorm === "save" && saveRe.test(label)) return el;
+				}
+				return null;
+			}
+
+			async fillQuickEntryFields(doctype, stage = "open_and_fill_basic") {
+				const plans = this.getFormFieldSamplePlans(doctype, stage);
+				let filled = 0;
+				for (const plan of plans) {
+					if (!this.running) break;
+					const input = this.findQuickEntryFieldInput(plan.fieldname);
+					if (!input) continue;
+					const focused = await this.focusElement(input, String(plan.message || "Quick Entry maydonini to'ldiramiz."), {
+						click: true,
+						duration_ms: 240,
+						pre_click_pause_ms: 100,
+					});
+					if (!focused) continue;
+					const ok = await this.typeIntoInput(input, plan.value);
+					if (ok) {
+						filled += 1;
+						await this.sleep(110);
+					}
+				}
+				return filled;
+			}
 
 		async typeIntoInput(input, value) {
 			if (!input || value === undefined || value === null) return false;
@@ -1070,10 +1147,10 @@
 			return filled;
 		}
 
-		async runCreateRecordTutorial(guide) {
-			if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
-			const doctype = this.getTutorialDoctype(guide);
-			const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
+			async runCreateRecordTutorial(guide) {
+				if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
+				const doctype = this.getTutorialDoctype(guide);
+				const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
 
 			if (!this.isOnDoctypeNewForm(doctype)) {
 				if (guide.route && !this.isAtRoute(guide.route)) {
@@ -1091,15 +1168,53 @@
 					duration_ms: 320,
 					pre_click_pause_ms: 120,
 				});
-				if (!clicked) {
-					return { ok: false, message: "Yangi yozuv tugmasini xavfsiz bosib bo'lmadi." };
+					if (!clicked) {
+						return { ok: false, message: "Yangi yozuv tugmasini xavfsiz bosib bo'lmadi." };
+					}
+					await this.waitFor(() => this.isOnDoctypeNewForm(doctype) || this.isQuickEntryOpen(), 5200, 120);
 				}
-				await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
-			}
+				const quickEntryOpen = this.isQuickEntryOpen();
+				if (!this.isOnDoctypeNewForm(doctype) && quickEntryOpen) {
+					if (stage === "show_save_only") {
+						const quickSaveBtn = this.findQuickEntryActionButton("save");
+						if (quickSaveBtn) {
+							await this.focusElement(quickSaveBtn, 'Quick Entry ichida "Save" tugmasi shu joyda (bosmayman).', {
+								click: false,
+								duration_ms: 240,
+							});
+						}
+					} else {
+						await this.fillQuickEntryFields(doctype, stage === "fill_more" ? "fill_more" : "open_and_fill_basic");
+					}
 
-			if (!this.isOnDoctypeNewForm(doctype)) {
-				return { ok: false, message: "Yangi forma ochilmadi. Iltimos yana bir bor urining." };
-			}
+					const fullFormBtn = this.findQuickEntryActionButton("edit_full_form");
+					if (fullFormBtn) {
+						const openedFullForm = await this.focusElement(
+							fullFormBtn,
+							'"Edit Full Form" ni bosib to\'liq formaga o\'tamiz.',
+							{
+								click: true,
+								duration_ms: 300,
+								pre_click_pause_ms: 120,
+							}
+						);
+						if (openedFullForm) {
+							await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
+						}
+					}
+				}
+
+				if (!this.isOnDoctypeNewForm(doctype) && !this.isQuickEntryOpen()) {
+					return { ok: false, message: "Yangi forma ochilmadi. Iltimos yana bir bor urining." };
+				}
+
+				if (!this.isOnDoctypeNewForm(doctype) && this.isQuickEntryOpen()) {
+					return {
+						ok: true,
+						reached_target: true,
+						message: "Quick Entry oynasi ochildi. Asosiy maydonlarni to'ldirib ko'rsatdim. Davom ettirish uchun 'Edit Full Form' ni bosing.",
+					};
+				}
 
 			if (stage === "show_save_only") {
 				const saveBtn = await this.waitFor(() => this.findSaveActionButton(), 2000, 120);
@@ -1640,7 +1755,7 @@
 					}
 				}
 				await this.sleep(420);
-				if (guide.route && this.isAtRoute(guide.route)) {
+				if (!isTutorial && guide.route && this.isAtRoute(guide.route)) {
 					result.ok = true;
 					result.reached_target = true;
 					result.already_there = false;
