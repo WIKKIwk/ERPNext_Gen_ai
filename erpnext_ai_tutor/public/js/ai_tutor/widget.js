@@ -879,12 +879,14 @@
 
 		maybeShowWelcomeMessage() {
 			if (!this.config?.enabled) return;
+			// Do not create a fresh chat on every login/restart when history already exists.
+			// Otherwise it looks like chat history was erased because active conversation changes.
+			const hasAnyHistory =
+				Array.isArray(this.conversations) &&
+				this.conversations.some((conv) => Array.isArray(conv?.messages) && conv.messages.length > 0);
+			if (hasAnyHistory) return;
 			if (this.hasShownWelcomeInSession()) return;
 			this.ensureConversation();
-			const conv = this.getActiveConversation();
-			if (conv && Array.isArray(conv.messages) && conv.messages.length) {
-				this.newChat({ render: false });
-			}
 			const routeKey = this.routeKey || this.getRouteKey();
 			this.append("assistant", this.getWelcomeMessage(), { route_key: routeKey });
 			this.open();
