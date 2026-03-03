@@ -15,6 +15,21 @@ CREATE_ACTION_RE = re.compile(
 	re.IGNORECASE,
 )
 
+PRACTICAL_TUTORIAL_RE = re.compile(
+	r"(?:"
+	r"\bo['’]?rgat[a-z\u0400-\u04FF'’_-]*\b|"
+	r"\borgat[a-z\u0400-\u04FF'’_-]*\b|"
+	r"\bto['’]?ldir[a-z\u0400-\u04FF'’_-]*\b|"
+	r"\btoldir[a-z\u0400-\u04FF'’_-]*\b|"
+	r"\bqadam(?:-|\s*)baqadam\b|"
+	r"\bamaliy(?:da)?\s+ko['’]?rsat[a-z\u0400-\u04FF'’_-]*\b|"
+	r"\bdemo(?:da)?\s+ko['’]?rsat[a-z\u0400-\u04FF'’_-]*\b|"
+	r"\bshow\s+me\s+how\b|"
+	r"\bstep[\s-]*by[\s-]*step\b"
+	r")",
+	re.IGNORECASE,
+)
+
 CONTINUE_ACTION_RE = re.compile(
 	r"(?:\b(?:davom|keyingi|yana|continue|next)\b)",
 	re.IGNORECASE,
@@ -497,6 +512,19 @@ def _needs_action_clarification(user_message: str) -> bool:
 	return bool(GENERIC_HELP_RE.search(text)) and not bool(ACTION_KEYWORDS_RE.search(text))
 
 
+def _looks_like_practical_tutorial_request(user_message: str) -> bool:
+	"""Heuristic fallback when LLM intent classifier is uncertain."""
+	text = str(user_message or "").strip()
+	if not text:
+		return False
+	if PRACTICAL_TUTORIAL_RE.search(text):
+		return True
+	# "qanday + create/add/new" style requests should be treated as tutorial asks.
+	if GENERIC_HELP_RE.search(text) and CREATE_ACTION_RE.search(text):
+		return True
+	return False
+
+
 def _build_training_reply(
 	*,
 	reply: str,
@@ -534,7 +562,8 @@ def maybe_handle_training_flow(
 	intent = _infer_training_intent_with_ai(text, has_active_tutorial=bool(state_action and state_doctype))
 	intent_action = str(intent.get("action") or "other").strip().lower()
 	intent_doctype = str(intent.get("doctype") or "").strip()
-	create_requested = bool(CREATE_ACTION_RE.search(text)) or intent_action == "create_record"
+	practical_tutorial_requested = _looks_like_practical_tutorial_request(text)
+	create_requested = bool(CREATE_ACTION_RE.search(text)) or practical_tutorial_requested or intent_action == "create_record"
 	continue_requested = bool(CONTINUE_ACTION_RE.search(text)) or intent_action == "continue"
 	show_save_requested = bool(SHOW_SAVE_RE.search(text)) or intent_action == "show_save"
 
