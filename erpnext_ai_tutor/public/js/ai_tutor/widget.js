@@ -1870,11 +1870,11 @@
 				guide_completed: guideCompleted,
 				ts,
 			});
-			const wrap = this.appendToDOM("assistant", "", ts, {
-				animate: true,
-				guide: null,
-				guide_completed,
-			});
+				const wrap = this.appendToDOM("assistant", "", ts, {
+					animate: true,
+					guide: null,
+					guide_completed: guideCompleted,
+				});
 
 			const conv = this.getActiveConversation();
 			if (conv) {
