@@ -141,6 +141,8 @@
 			for (const timer of this._pulseTimers) {
 				window.clearTimeout(timer);
 			}
+			this._pulseTimers = [];
+		}
 
 			cleanupTypingNode(audio) {
 				if (!audio) return;
@@ -152,8 +154,6 @@
 				audio.src = "";
 				this._activeTypingNodes.delete(audio);
 			}
-			this._pulseTimers = [];
-		}
 
 			sleep(ms) {
 				return new Promise((resolve) => window.setTimeout(resolve, ms));
