@@ -121,6 +121,14 @@ def _handle_active_continue(
 		fallback_doctype=effective_state_doctype,
 	)
 	doctype = str(target.get("doctype") or effective_state_doctype).strip()
+	if (
+		stage != "show_save_only"
+		and isinstance(field_overrides, dict)
+		and field_overrides
+		and str(doctype or "").strip().lower() == "user"
+	):
+		# User email/field correction requests must stay in basic tab flow.
+		stage = "open_and_fill_basic"
 	route = str(target.get("route") or f"/app/{_doctype_to_slug(doctype)}")
 	menu_path = target.get("menu_path") or [doctype]
 	return _build_continue_step_response(
