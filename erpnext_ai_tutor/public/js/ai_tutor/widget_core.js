@@ -1761,36 +1761,68 @@
 							window.getComputedStyle(wrapper).visibility !== "hidden")
 				);
 				const isVisible = jqVisible || domVisible;
+				if (isVisible && dialog && typeof dialog.cancel === "function") {
+					dialog.cancel();
+				}
 				if (wrapper) {
 					for (const sel of closeSelectors) {
 						const btn = wrapper.querySelector(sel);
 						if (btn && typeof btn.click === "function" && isVisible) {
 							btn.click();
-							return true;
 						}
 					}
 				}
+				if (isVisible && dialog && typeof dialog.get_close_btn === "function") {
+					const closeBtn = dialog.get_close_btn();
+					if (closeBtn && typeof closeBtn.trigger === "function") {
+						closeBtn.trigger("click");
+					}
+				}
+				if (isVisible && typeof window.jQuery === "function" && wrapper) {
+					window.jQuery(wrapper).modal("hide");
+				}
 				if (isVisible && typeof frappe?.hide_msgprint === "function") {
 					frappe.hide_msgprint(true);
-					return true;
 				}
 				if (isVisible && dialog && typeof dialog.hide === "function") {
 					dialog.hide();
-					return true;
 				}
+				return !this.isNoRolesDialogVisible();
 			} catch {
 				// ignore
 			}
-			return false;
+			return !this.isNoRolesDialogVisible();
+		}
+
+		isNoRolesDialogVisible() {
+			const dialogs = Array.from(document.querySelectorAll(".msgprint-dialog, .modal.msgprint-dialog, .modal.show, .modal.in"));
+			const matched = dialogs.filter((el) => {
+				const text = stripHtml(el?.textContent || "").toLowerCase();
+				if (!text) return false;
+				const hasNoRoles = text.includes("no roles specified") || text.includes("has no roles") || text.includes("no roles enabled");
+				if (!hasNoRoles) return false;
+				const style = window.getComputedStyle(el);
+				return style && style.display !== "none" && style.visibility !== "hidden";
+			});
+			if (matched.length) return true;
+			try {
+				const dialog = frappe?.msg_dialog;
+				if (!dialog?.$wrapper || typeof dialog.$wrapper.is !== "function") return false;
+				return dialog.$wrapper.is(":visible");
+			} catch {
+				return false;
+			}
 		}
 
 		async closeNoRolesSpecifiedDialogWithRetry() {
-			if (this.closeNoRolesSpecifiedDialog()) return true;
-			for (let i = 0; i < 12; i += 1) {
-				await new Promise((resolve) => setTimeout(resolve, 100));
-				if (this.closeNoRolesSpecifiedDialog()) return true;
+			for (let i = 0; i < 16; i += 1) {
+				if (!this.isNoRolesDialogVisible()) return true;
+				this.closeNoRolesSpecifiedDialog();
+				await new Promise((resolve) => setTimeout(resolve, 90));
+				if (!this.isNoRolesDialogVisible()) return true;
 			}
-			return false;
+			this.closeNoRolesSpecifiedDialog();
+			return !this.isNoRolesDialogVisible();
 		}
 
 		async navigateToUserListAfterNoRoles() {
