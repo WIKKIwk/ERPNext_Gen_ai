@@ -2900,6 +2900,29 @@
 					const root = document.querySelector(".frappe-control[data-fieldname='roles']");
 					return Boolean(root && isVisible(root));
 				};
+				const findRolesTabButton = () => {
+					const selectors = [
+						".form-tabs .nav-link",
+						".form-tabs button",
+						".form-tabs a",
+						".nav-tabs .nav-link",
+						".page-form .nav-link",
+					];
+					for (const sel of selectors) {
+						const nodes = document.querySelectorAll(sel);
+						for (const node of nodes) {
+							const el = getClickable(node) || node;
+							if (!el || !isVisible(el)) continue;
+							if (el.closest(".erpnext-ai-tutor-root")) continue;
+							const text = normalizeText(el.textContent || el.getAttribute("data-label") || "");
+							if (!text) continue;
+							if (text.includes("roles") && (text.includes("permission") || text.includes("permissions"))) {
+								return el;
+							}
+						}
+					}
+					return null;
+				};
 				let rolesTabActivated = false;
 				let addRowClicked = false;
 				let roleInputReady = false;
@@ -2955,32 +2978,44 @@
 					}
 				}
 
-				const tabLabels = ["Roles & Permissions", "Roles and Permissions", "Roles & Permission", "Roles"];
-				let rolesTab = null;
-				for (const label of tabLabels) {
-					const match = this.findByLabelCandidate(label, { allowHidden: false });
-					if (match?.el) {
-						rolesTab = match.el;
-						break;
-					}
-				}
-				if (rolesTab) {
-					const clicked = await this.focusElement(rolesTab, "`Roles & Permissions` bo'limiga o'tamiz.", {
-						click: true,
-						duration_ms: 300,
-						pre_click_pause_ms: 120,
-					});
-					rolesTabActivated = Boolean(clicked);
+				if (isRolesSectionVisible()) {
+					rolesTabActivated = true;
 					this.traceTutorialEvent("manage_roles.roles_tab", {
 						found: true,
-						clicked: Boolean(clicked),
-					});
-					await this.sleep(180);
-				} else {
-					this.traceTutorialEvent("manage_roles.roles_tab", {
-						found: false,
 						clicked: false,
+						already_visible: true,
 					});
+				} else {
+					const openedByFieldTab = await this.ensureFieldTabVisible("roles", "Roles & Permissions");
+					rolesTabActivated = Boolean(isRolesSectionVisible());
+					this.traceTutorialEvent("manage_roles.roles_tab", {
+						found: true,
+						clicked: Boolean(openedByFieldTab),
+						strategy: "ensure_field_tab_visible",
+						visible_after: rolesTabActivated,
+					});
+					if (!rolesTabActivated) {
+						const rolesTabBtn = findRolesTabButton();
+						if (rolesTabBtn) {
+							const clicked = await this.focusElement(rolesTabBtn, "`Roles & Permissions` bo'limiga o'tamiz.", {
+								click: true,
+								duration_ms: 300,
+								pre_click_pause_ms: 120,
+							});
+							await this.sleep(160);
+							rolesTabActivated = Boolean(clicked) && isRolesSectionVisible();
+							this.traceTutorialEvent("manage_roles.roles_tab_fallback", {
+								found: true,
+								clicked: Boolean(clicked),
+								visible_after: rolesTabActivated,
+							});
+						} else {
+							this.traceTutorialEvent("manage_roles.roles_tab_fallback", {
+								found: false,
+								clicked: false,
+							});
+						}
+					}
 				}
 
 				const rolesRoot = await this.waitFor(
