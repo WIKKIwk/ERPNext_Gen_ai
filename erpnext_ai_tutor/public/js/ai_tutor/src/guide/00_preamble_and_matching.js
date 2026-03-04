@@ -90,6 +90,21 @@
 				return formatted;
 			}
 
+			shouldShowProgressInChat(rawText) {
+				const mode = String(this._runOptions?.progress_mode || "full").trim().toLowerCase();
+				if (mode !== "compact") return true;
+				const normalized = String(rawText || "")
+					.toLowerCase()
+					.replace(/[\u2018\u2019`']/g, "")
+					.trim();
+				if (!normalized) return false;
+				if (/allaqachon.*toldirilgan/.test(normalized)) return false;
+				if (normalized.includes("qiymati tayyorlandi") && normalized.includes("cursor bilan bosib")) return false;
+				if (normalized.includes("qoshimcha batafsil pass")) return false;
+				if (normalized.includes("batafsil reja:")) return false;
+				return true;
+			}
+
 				emitProgress(message) {
 					const text = String(message || "").trim();
 					if (!text) return;
@@ -99,18 +114,21 @@
 				this._lastProgressAt = now;
 				const cb = this._runOptions?.onProgress;
 				if (typeof cb !== "function") return;
-				const chatText = this.formatProgressForChat(text);
-				if (!chatText) return;
+				const showInChat = this.shouldShowProgressInChat(text);
+				const chatText = showInChat ? this.formatProgressForChat(text) : "";
+				this.traceTutorialEvent("progress", {
+					text: chatText || text,
+					raw_text: text,
+					step_no: showInChat ? Number(this._progressStepNo || 0) : null,
+					shown_in_chat: showInChat,
+					mode: String(this._runOptions?.progress_mode || "full").trim().toLowerCase(),
+				});
+				if (!showInChat || !chatText) return;
 					try {
 						cb(chatText);
 					} catch {
 						// ignore progress callback errors
 					}
-					this.traceTutorialEvent("progress", {
-						text: chatText,
-						raw_text: text,
-						step_no: Number(this._progressStepNo || 0),
-					});
 				}
 
 				sanitizeTraceValue(value, depth = 0) {

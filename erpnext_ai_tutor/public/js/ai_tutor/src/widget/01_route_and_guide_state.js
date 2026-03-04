@@ -267,6 +267,7 @@
 				try {
 					const routeKey = this.routeKey || this.getRouteKey();
 					const runResult = await this.guideRunner.run(guide, {
+						progress_mode: opts?.auto ? "compact" : "full",
 						onProgress: (text) => {
 							this.append("assistant", String(text), { route_key: routeKey });
 						},
