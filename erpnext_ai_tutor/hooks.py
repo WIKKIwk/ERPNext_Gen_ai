@@ -6,6 +6,7 @@ app_email = "wikki@example.com"
 app_license = "Apache-2.0"
 
 from pathlib import Path
+import hashlib
 
 # Apps
 # ------------------
@@ -37,19 +38,20 @@ def _compute_asset_version() -> str:
 		"public/js/ai_tutor/widget.js",
 		"public/js/ai_tutor/boot.js",
 	]
-	mtimes = []
+	digest = hashlib.sha1()
 	for rel in candidates:
 		path = base / rel
+		digest.update(rel.encode("utf-8"))
 		try:
-			mtimes.append(int(path.stat().st_mtime))
+			data = path.read_bytes()
 		except OSError:
 			continue
-	return str(max(mtimes)) if mtimes else "1"
+		digest.update(str(len(data)).encode("ascii"))
+		digest.update(data)
+	return digest.hexdigest()[:16]
 
 
 ASSET_VERSION = _compute_asset_version()
-# Manual cache-bust suffix for forced client refresh when browser keeps stale JS.
-ASSET_VERSION = f"{ASSET_VERSION}-20260304-rolesflow-v3"
 
 app_include_css = f"/assets/erpnext_ai_tutor/css/ai_tutor_widget.css?v={ASSET_VERSION}"
 app_include_js = [
