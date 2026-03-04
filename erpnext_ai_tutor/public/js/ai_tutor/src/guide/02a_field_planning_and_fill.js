@@ -355,21 +355,26 @@
 						return String(stage || "").trim().toLowerCase() === "fill_more" ? 14 : 10;
 					}
 
-				async fetchLinkDemoValue(linkDoctype, hint = "") {
+				async fetchLinkDemoValue(linkDoctype, hint = "", opts = {}) {
 					const doctype = String(linkDoctype || "").trim();
 					if (!doctype) return "";
 					this._linkValueCache = this._linkValueCache || {};
-					const key = `${doctype}::${String(hint || "").trim().toLowerCase()}`;
+					const shouldCreate = Boolean(opts?.create_if_missing);
+					const key = `${doctype}::${String(hint || "").trim().toLowerCase()}::${shouldCreate ? "create" : "read"}`;
 					if (this._linkValueCache[key]) return this._linkValueCache[key];
 					try {
 						const res = await frappe.call("erpnext_ai_tutor.api.get_link_demo_value", {
 							doctype,
 							hint: String(hint || "").trim(),
+							create_if_missing: shouldCreate ? 1 : 0,
 						});
 						const msg = res?.message || {};
 						const value = String(msg?.value || "").trim();
 						if (value) {
 							this._linkValueCache[key] = value;
+							if (Boolean(msg?.created) && opts?.report_created) {
+								this.emitProgress(`🧱 \`${doctype}\` bo'yicha demo yozuv yaratildi: **${value}**.`);
+							}
 							return value;
 						}
 					} catch {
@@ -378,7 +383,7 @@
 					return "";
 				}
 
-				async resolvePlanValue(df, rawValue) {
+				async resolvePlanValue(df, rawValue, opts = {}) {
 					const fieldtype = String(df?.fieldtype || "").trim();
 					const fieldname = String(df?.fieldname || "").trim().toLowerCase();
 					if (fieldname === "stock_entry_type") {
@@ -391,7 +396,11 @@
 					if (fieldtype === "Link") {
 						const linkDoctype = String(df?.options || "").trim();
 						const hint = String(rawValue || "").trim();
-						return await this.fetchLinkDemoValue(linkDoctype, hint);
+						const allowCreateLink = Boolean(opts?.allowCreateLink);
+						return await this.fetchLinkDemoValue(linkDoctype, hint, {
+							create_if_missing: allowCreateLink,
+							report_created: allowCreateLink,
+						});
 					}
 					if (fieldtype === "Select") {
 						const options = this.parseFieldOptions(df?.options);
@@ -615,7 +624,9 @@
 							continue;
 						}
 
-						const valueToType = await this.resolvePlanValue(df, plan?.value);
+						const valueToType = await this.resolvePlanValue(df, plan?.value, {
+							allowCreateLink: Boolean(this._allowDependencyCreation && df?.reqd),
+						});
 						if (!this.isFieldValueFilled(df, valueToType)) {
 							const linkDoctype = String(df?.options || "").trim();
 							if (String(df?.fieldtype || "").trim() === "Link" && Boolean(df?.reqd) && linkDoctype) {
@@ -696,7 +707,9 @@
 							const currentVal = this.readFieldValue(fieldname);
 							if (this.isFieldValueFilled(df, currentVal) && !this.isControlInvalid(fieldname)) continue;
 
-							const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df));
+							const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df), {
+								allowCreateLink: Boolean(this._allowDependencyCreation),
+							});
 							if (!this.isFieldValueFilled(df, valueToType)) {
 								const linkDoctype = String(df?.options || "").trim();
 								if (String(df?.fieldtype || "").trim() === "Link" && linkDoctype) {

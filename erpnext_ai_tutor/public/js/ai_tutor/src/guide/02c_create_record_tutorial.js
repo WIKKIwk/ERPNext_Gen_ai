@@ -1,12 +1,16 @@
 			async runCreateRecordTutorial(guide) {
 				if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
 				const doctype = this.getTutorialDoctype(guide);
-				this._tutorialStockEntryTypePreference =
-					String(doctype || "").trim().toLowerCase() === "stock entry"
-						? this.normalizeStockEntryTypePreference(guide?.tutorial?.stock_entry_type_preference)
-						: "";
-				const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
-				this.emitProgress(`🚀 **${doctype}** bo'yicha amaliy ko'rsatishni boshladim.`);
+					this._tutorialStockEntryTypePreference =
+						String(doctype || "").trim().toLowerCase() === "stock entry"
+							? this.normalizeStockEntryTypePreference(guide?.tutorial?.stock_entry_type_preference)
+							: "";
+					this._allowDependencyCreation = guide?.tutorial?.allow_dependency_creation === true;
+					const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
+					this.emitProgress(`🚀 **${doctype}** bo'yicha amaliy ko'rsatishni boshladim.`);
+					if (this._allowDependencyCreation) {
+						this.emitProgress("🧰 Kerakli bog'liq masterlar topilmasa, demo uchun avtomatik yaratib davom etaman.");
+					}
 
 				if (!this.isOnDoctypeNewForm(doctype)) {
 					if (guide.route && !this.isAtRoute(guide.route)) {
@@ -201,31 +205,35 @@
 									: `ℹ️ Keyingi amaliy bosqichda birga tasdiqlanadigan maydonlar: ${backgroundFilledLabels.join(", ")}.`
 							);
 						}
-					if (missingRequiredLabels.length) {
-						const details = describeBackgroundEntries(backgroundFilledEntries);
-						this.emitProgress(
-							`⚠️ Majburiy maydonlar hali to'lmadi: ${missingRequiredLabels.join(", ")}. Jarayon to'liq tugamadi.`
-						);
-						if (blockedLinkHints.length) {
-							this.emitProgress(`🧩 Bog'liq master yozuvlar kerak: ${blockedLinkHints.join(", ")}.`);
-						}
-							return {
-								ok: true,
-								reached_target: true,
-								message:
-									filled > 0
-											? `UI tasdiqlagan ${filled} ta maydon to'ldirildi (${filledLabels.join(
+						if (missingRequiredLabels.length) {
+							const details = describeBackgroundEntries(backgroundFilledEntries);
+							this.emitProgress(
+								`⚠️ Majburiy maydonlar hali to'lmadi: ${missingRequiredLabels.join(", ")}. Jarayon to'liq tugamadi.`
+							);
+							if (blockedLinkHints.length) {
+								this.emitProgress(`🧩 Bog'liq master yozuvlar kerak: ${blockedLinkHints.join(", ")}.`);
+							}
+							const enableAutoCreateHint =
+								blockedLinkHints.length && !this._allowDependencyCreation
+									? " Agar xohlasangiz `ha, davom et` deb yozing - keyingi urinishda kerakli demo masterlarni yaratib davom etaman."
+									: "";
+								return {
+									ok: true,
+									reached_target: true,
+									message:
+										filled > 0
+												? `UI tasdiqlagan ${filled} ta maydon to'ldirildi (${filledLabels.join(
+														", "
+													)}), lekin dars tugamadi. Majburiy maydonlar qolgan: ${missingRequiredLabels.join(", ")}.${
+														backgroundFilledLabels.length
+															? ` Keyingi amaliy bosqichda tasdiqlanadigan maydonlar: ${details || backgroundFilledLabels.join(", ")}.`
+															: ""
+													}${enableAutoCreateHint}`
+											: `Forma ochildi, lekin majburiy maydonlar hali bo'sh: ${missingRequiredLabels.join(
 													", "
-												)}), lekin dars tugamadi. Majburiy maydonlar qolgan: ${missingRequiredLabels.join(", ")}.${
-													backgroundFilledLabels.length
-														? ` Keyingi amaliy bosqichda tasdiqlanadigan maydonlar: ${details || backgroundFilledLabels.join(", ")}.`
-														: ""
-												}`
-										: `Forma ochildi, lekin majburiy maydonlar hali bo'sh: ${missingRequiredLabels.join(
-												", "
-											)}. Avval shu maydonlarni to'ldiramiz.`,
-							};
-						}
+												)}. Avval shu maydonlarni to'ldiramiz.${enableAutoCreateHint}`,
+								};
+							}
 						this.emitProgress(
 							filled > 0
 								? `🎯 UI tasdiqlagan maydonlar: ${filledLabels.join(", ")}. Endi keyingi bosqichga o'tish mumkin.`
@@ -246,4 +254,3 @@
 										: "Forma ochildi, lekin avtomatik to'ldirishga mos maydon topilmadi. Qaysi maydondan boshlaymiz?",
 						};
 					}
-

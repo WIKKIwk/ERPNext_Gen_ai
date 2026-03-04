@@ -252,6 +252,7 @@
 					const stockEntryTypePreference = normalizeStockEntryTypePreference(
 						tutorialRaw.stock_entry_type_preference
 					);
+					const allowDependencyCreation = tutorialRaw.allow_dependency_creation === true;
 					if (mode === "create_record") {
 						tutorial = {
 							mode,
@@ -260,6 +261,9 @@
 						};
 						if (stockEntryTypePreference) {
 							tutorial.stock_entry_type_preference = stockEntryTypePreference;
+						}
+						if (allowDependencyCreation) {
+							tutorial.allow_dependency_creation = true;
 						}
 					}
 				}

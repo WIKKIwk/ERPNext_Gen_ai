@@ -77,15 +77,38 @@ class TrainingFlowLogicTests(unittest.TestCase):
 				state_action="create_record",
 				state_doctype="Item",
 				context_doctype="",
+					continue_requested=True,
+					show_save_requested=False,
+					dependency_create_requested=False,
+					create_requested=False,
+					explicit_doctype="",
+					pick_stock_entry_type=lambda _doctype: "",
+				)
+		self.assertIsInstance(result, dict)
+		self.assertEqual(result.get("tutor_state", {}).get("stage"), "fill_more")
+		self.assertEqual(result.get("guide", {}).get("tutorial", {}).get("stage"), "fill_more")
+		self.assertNotIn("allow_dependency_creation", result.get("guide", {}).get("tutorial", {}))
+
+	def test_active_continue_sets_allow_dependency_creation_in_guide_and_state(self):
+		with patch(
+			"erpnext_ai_tutor.tutor.training_handlers._resolve_doctype_target",
+			return_value={"doctype": "BOM", "route": "/app/bom", "menu_path": ["Manufacturing", "BOM"]},
+		):
+			result = _handle_active_continue(
+				lang="uz",
+				ctx={},
+				state_action="create_record",
+				state_doctype="BOM",
+				context_doctype="",
 				continue_requested=True,
 				show_save_requested=False,
+				dependency_create_requested=True,
 				create_requested=False,
 				explicit_doctype="",
 				pick_stock_entry_type=lambda _doctype: "",
 			)
-		self.assertIsInstance(result, dict)
-		self.assertEqual(result.get("tutor_state", {}).get("stage"), "fill_more")
-		self.assertEqual(result.get("guide", {}).get("tutorial", {}).get("stage"), "fill_more")
+		self.assertTrue(result.get("guide", {}).get("tutorial", {}).get("allow_dependency_creation"))
+		self.assertTrue(result.get("tutor_state", {}).get("allow_dependency_creation"))
 
 	def test_runtime_prefers_context_target_when_state_context_mismatch(self):
 		context_target = {"doctype": "Customer", "route": "/app/customer", "menu_path": ["Selling", "Customer"]}

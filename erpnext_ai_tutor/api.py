@@ -67,6 +67,7 @@ GUIDE_ROUTE_OVERRIDES = {
 		"menu_path": ["Build", "DocType"],
 	}
 }
+DEMO_LINK_AUTOCREATE_ALLOWLIST = {"Item", "UOM"}
 
 GUIDE_NAV_TAG_RE = re.compile(r"\[\[\s*GUIDE_NAV\s*\]\]", re.IGNORECASE)
 
@@ -163,15 +164,15 @@ def plan_tutorial_fields(
 
 
 @frappe.whitelist()
-def get_link_demo_value(doctype: str, hint: str = "") -> Dict[str, Any]:
+def get_link_demo_value(doctype: str, hint: str = "", create_if_missing: int | bool = 0) -> Dict[str, Any]:
 	"""Return a safe existing record name for Link field demo fill."""
 	target_doctype = str(doctype or "").strip()
 	if not target_doctype:
-		return {"ok": False, "value": ""}
+		return {"ok": False, "value": "", "created": False}
 	if not frappe.db.exists("DocType", target_doctype):
-		return {"ok": False, "value": ""}
+		return {"ok": False, "value": "", "created": False}
 	if not frappe.has_permission(target_doctype, "read"):
-		return {"ok": False, "value": ""}
+		return {"ok": False, "value": "", "created": False}
 
 	query = str(hint or "").strip()
 	rows: List[Dict[str, Any]] = []
@@ -192,7 +193,111 @@ def get_link_demo_value(doctype: str, hint: str = "") -> Dict[str, Any]:
 		)
 
 	value = str(rows[0].get("name") or "").strip() if rows else ""
-	return {"ok": bool(value), "value": value}
+	if value:
+		return {"ok": True, "value": value, "created": False}
+	try:
+		should_create = bool(int(create_if_missing or 0))
+	except Exception:
+		should_create = str(create_if_missing or "").strip().lower() in {"1", "true", "yes"}
+	if not should_create:
+		return {"ok": False, "value": "", "created": False}
+	if target_doctype not in DEMO_LINK_AUTOCREATE_ALLOWLIST:
+		return {"ok": False, "value": "", "created": False}
+
+	created = _create_demo_link_record(target_doctype, query)
+	return {"ok": bool(created), "value": created, "created": bool(created)}
+
+
+def _sanitize_demo_token(value: str, *, max_len: int = 16) -> str:
+	text = re.sub(r"[^A-Za-z0-9]+", "-", str(value or "").strip()).strip("-")
+	if not text:
+		text = "DEMO"
+	return text[:max_len].upper()
+
+
+def _ensure_demo_uom() -> str:
+	rows = frappe.get_all(
+		"UOM",
+		fields=["name"],
+		filters={"name": ["in", ["Nos", "Unit"]]},
+		order_by="modified desc",
+		limit=1,
+	)
+	if rows:
+		return str(rows[0].get("name") or "").strip()
+	latest = frappe.get_all("UOM", fields=["name"], order_by="modified desc", limit=1)
+	if latest:
+		return str(latest[0].get("name") or "").strip()
+	if not frappe.has_permission("UOM", "create"):
+		return ""
+	try:
+		doc = frappe.new_doc("UOM")
+		doc.uom_name = "Nos"
+		doc.enabled = 1
+		doc.insert()
+		return str(doc.name or "").strip()
+	except Exception:
+		return ""
+
+
+def _ensure_demo_item_group() -> str:
+	rows = frappe.get_all(
+		"Item Group",
+		fields=["name"],
+		filters={"name": ["like", "%All Item Groups%"]},
+		order_by="modified desc",
+		limit=1,
+	)
+	if rows:
+		return str(rows[0].get("name") or "").strip()
+	latest = frappe.get_all("Item Group", fields=["name"], order_by="modified desc", limit=1)
+	if latest:
+		return str(latest[0].get("name") or "").strip()
+	if not frappe.has_permission("Item Group", "create"):
+		return ""
+	try:
+		doc = frappe.new_doc("Item Group")
+		doc.item_group_name = "All Item Groups"
+		doc.is_group = 1
+		doc.insert()
+		return str(doc.name or "").strip()
+	except Exception:
+		return ""
+
+
+def _create_demo_item(hint: str = "") -> str:
+	if not frappe.has_permission("Item", "create"):
+		return ""
+	item_group = _ensure_demo_item_group()
+	stock_uom = _ensure_demo_uom()
+	if not item_group or not stock_uom:
+		return ""
+
+	token = _sanitize_demo_token(hint or "item")
+	item_code = f"AI-{token}"
+	if frappe.db.exists("Item", item_code):
+		item_code = f"AI-{token}-{frappe.generate_hash(length=5).upper()}"
+	try:
+		doc = frappe.new_doc("Item")
+		doc.item_code = item_code
+		doc.item_name = f"AI Demo {token.title()}"
+		doc.item_group = item_group
+		doc.stock_uom = stock_uom
+		doc.is_stock_item = 1
+		doc.include_item_in_manufacturing = 1
+		doc.insert()
+		return str(doc.name or "").strip()
+	except Exception:
+		return ""
+
+
+def _create_demo_link_record(doctype: str, hint: str = "") -> str:
+	target_doctype = str(doctype or "").strip()
+	if target_doctype == "UOM":
+		return _ensure_demo_uom()
+	if target_doctype == "Item":
+		return _create_demo_item(hint)
+	return ""
 
 
 @frappe.whitelist()

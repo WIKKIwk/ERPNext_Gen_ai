@@ -51,6 +51,7 @@ def maybe_handle_training_flow(
 	create_requested = bool(training_ctx.get("create_requested"))
 	continue_requested = bool(training_ctx.get("continue_requested"))
 	show_save_requested = bool(training_ctx.get("show_save_requested"))
+	dependency_create_requested = bool(training_ctx.get("dependency_create_requested"))
 	explicit_target = training_ctx.get("explicit_target") if isinstance(training_ctx.get("explicit_target"), dict) else {}
 	explicit_doctype = str(training_ctx.get("explicit_doctype") or "")
 	practical_tutorial_requested = bool(training_ctx.get("practical_tutorial_requested"))
@@ -103,6 +104,7 @@ def maybe_handle_training_flow(
 		context_doctype=context_doctype,
 		continue_requested=continue_requested,
 		show_save_requested=show_save_requested,
+		dependency_create_requested=dependency_create_requested,
 		create_requested=create_requested,
 		explicit_doctype=explicit_doctype,
 		pick_stock_entry_type=pick_stock_entry_type,

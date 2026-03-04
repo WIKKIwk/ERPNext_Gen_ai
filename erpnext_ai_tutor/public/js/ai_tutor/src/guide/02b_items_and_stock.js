@@ -4,12 +4,19 @@
 
 					const metaFields = Array.isArray(frm.meta?.fields) ? frm.meta.fields : [];
 					const itemsDf = metaFields.find((df) => String(df?.fieldname || "").trim() === "items");
-					if (!itemsDf || !Boolean(itemsDf.reqd) || Boolean(itemsDf.read_only) || Boolean(itemsDf.hidden)) {
+					if (!itemsDf || Boolean(itemsDf.read_only) || Boolean(itemsDf.hidden)) {
 						return { filled: 0, filledLabels: [], blockedLinkHints: [] };
 					}
 
 					const grid = frm.fields_dict?.items?.grid;
 					if (!grid) return { filled: 0, filledLabels: [], blockedLinkHints: [] };
+					const childFields = Array.isArray(grid.docfields) ? grid.docfields : [];
+					const requiredChildFields = childFields.filter((df) => {
+						if (!df || !df.fieldname) return false;
+						if (!Boolean(df.reqd) || Boolean(df.read_only) || Boolean(df.hidden)) return false;
+						return !this.isStructFieldType(df.fieldtype);
+					});
+					if (!requiredChildFields.length) return { filled: 0, filledLabels: [], blockedLinkHints: [] };
 
 					const blockedLinkHints = [];
 					const filledLabels = [];
@@ -23,13 +30,9 @@
 					}
 					if (!row) return { filled, filledLabels, blockedLinkHints };
 
-					const childFields = Array.isArray(grid.docfields) ? grid.docfields : [];
-					for (const df of childFields) {
+					for (const df of requiredChildFields) {
 						if (!this.running) break;
-						if (!df || !df.fieldname) continue;
-						if (!Boolean(df.reqd) || Boolean(df.read_only) || Boolean(df.hidden)) continue;
 						const fieldtype = String(df.fieldtype || "").trim();
-						if (this.isStructFieldType(fieldtype)) continue;
 
 						const fieldname = String(df.fieldname || "").trim();
 						if (!fieldname) continue;
@@ -37,7 +40,9 @@
 						if (this.isFieldValueFilled(df, currentVal)) continue;
 
 						const label = String(df.label || fieldname).trim();
-						const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df));
+						const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df), {
+							allowCreateLink: Boolean(this._allowDependencyCreation),
+						});
 						if (!this.isFieldValueFilled(df, valueToType)) {
 							const linkDoctype = String(df?.options || "").trim();
 							if (fieldtype === "Link" && linkDoctype) {
@@ -215,7 +220,10 @@
 						}
 					}
 
-					const itemCode = await this.fetchLinkDemoValue("Item", "");
+					const itemCode = await this.fetchLinkDemoValue("Item", "", {
+						create_if_missing: Boolean(this._allowDependencyCreation),
+						report_created: Boolean(this._allowDependencyCreation),
+					});
 					if (!itemCode) {
 						blockedLinkHints.push("**Item Code** (Link: Item)");
 						return { filled, filledLabels, blockedLinkHints };

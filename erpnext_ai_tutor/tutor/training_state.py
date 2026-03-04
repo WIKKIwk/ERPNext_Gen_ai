@@ -27,12 +27,14 @@ def _extract_state(ctx: Dict[str, Any]) -> Dict[str, Any]:
 	stock_entry_type_preference = str(state_raw.get("stock_entry_type_preference") or "").strip()
 	if stock_entry_type_preference not in ALLOWED_STOCK_ENTRY_TYPES:
 		stock_entry_type_preference = ""
+	allow_dependency_creation = bool(state_raw.get("allow_dependency_creation"))
 	return {
 		"pending": pending,
 		"stage": stage,
 		"doctype": doctype,
 		"action": action,
 		"stock_entry_type_preference": stock_entry_type_preference,
+		"allow_dependency_creation": allow_dependency_creation,
 	}
 
 
@@ -42,6 +44,7 @@ def _build_guide_payload(
 	menu_path: List[str],
 	stage: str,
 	stock_entry_type_preference: str = "",
+	allow_dependency_creation: bool = False,
 ) -> Dict[str, Any]:
 	clean_stage = stage if stage in ALLOWED_STAGES else "open_and_fill_basic"
 	tutorial: Dict[str, Any] = {
@@ -53,6 +56,8 @@ def _build_guide_payload(
 		pref = str(stock_entry_type_preference or "").strip()
 		if pref in ALLOWED_STOCK_ENTRY_TYPES:
 			tutorial["stock_entry_type_preference"] = pref
+	if allow_dependency_creation:
+		tutorial["allow_dependency_creation"] = True
 	return {
 		"type": "navigation",
 		"route": str(route or "").strip(),
@@ -67,6 +72,7 @@ def _coach_state(
 	stage: str,
 	pending: str = "",
 	stock_entry_type_preference: str = "",
+	allow_dependency_creation: bool = False,
 ) -> Dict[str, Any]:
 	state = {
 		"action": "create_record",
@@ -77,6 +83,8 @@ def _coach_state(
 	pref = str(stock_entry_type_preference or "").strip()
 	if str(doctype or "").strip().lower() == "stock entry" and pref in ALLOWED_STOCK_ENTRY_TYPES:
 		state["stock_entry_type_preference"] = pref
+	if allow_dependency_creation:
+		state["allow_dependency_creation"] = True
 	return state
 
 

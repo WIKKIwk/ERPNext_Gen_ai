@@ -94,6 +94,7 @@ def _handle_active_continue(
 	context_doctype: str,
 	continue_requested: bool,
 	show_save_requested: bool,
+	dependency_create_requested: bool,
 	create_requested: bool,
 	explicit_doctype: str,
 	pick_stock_entry_type: Callable[[str], str],
@@ -127,6 +128,7 @@ def _handle_active_continue(
 		route=route,
 		menu_path=menu_path,
 		stock_entry_type_preference=pick_stock_entry_type(doctype),
+		allow_dependency_creation=bool(dependency_create_requested and stage != "show_save_only"),
 	)
 
 

@@ -94,25 +94,29 @@
 				.slice(0, 6);
 			const tutorialRaw = raw.tutorial;
 			let tutorial = null;
-			if (tutorialRaw && typeof tutorialRaw === "object") {
-				const mode = String(tutorialRaw.mode || "").trim().toLowerCase();
-				const stageRaw = String(tutorialRaw.stage || "open_and_fill_basic").trim().toLowerCase();
-				const allowedStages = new Set(["open_and_fill_basic", "fill_more", "show_save_only"]);
-				const stage = allowedStages.has(stageRaw) ? stageRaw : "open_and_fill_basic";
-				const stockEntryTypePreference = normalizeStockEntryTypePreference(
-					tutorialRaw.stock_entry_type_preference
-				);
-				if (mode === "create_record") {
-					tutorial = {
-						mode,
-						stage,
-						doctype: String(tutorialRaw.doctype || "").trim(),
-					};
-					if (stockEntryTypePreference) {
-						tutorial.stock_entry_type_preference = stockEntryTypePreference;
+				if (tutorialRaw && typeof tutorialRaw === "object") {
+					const mode = String(tutorialRaw.mode || "").trim().toLowerCase();
+					const stageRaw = String(tutorialRaw.stage || "open_and_fill_basic").trim().toLowerCase();
+					const allowedStages = new Set(["open_and_fill_basic", "fill_more", "show_save_only"]);
+					const stage = allowedStages.has(stageRaw) ? stageRaw : "open_and_fill_basic";
+					const stockEntryTypePreference = normalizeStockEntryTypePreference(
+						tutorialRaw.stock_entry_type_preference
+					);
+					const allowDependencyCreation = tutorialRaw.allow_dependency_creation === true;
+					if (mode === "create_record") {
+						tutorial = {
+							mode,
+							stage,
+							doctype: String(tutorialRaw.doctype || "").trim(),
+						};
+						if (stockEntryTypePreference) {
+							tutorial.stock_entry_type_preference = stockEntryTypePreference;
+						}
+						if (allowDependencyCreation) {
+							tutorial.allow_dependency_creation = true;
+						}
 					}
 				}
-			}
 			return {
 				type: "navigation",
 				route,
@@ -1555,21 +1559,26 @@
 						return String(stage || "").trim().toLowerCase() === "fill_more" ? 14 : 10;
 					}
 
-				async fetchLinkDemoValue(linkDoctype, hint = "") {
+				async fetchLinkDemoValue(linkDoctype, hint = "", opts = {}) {
 					const doctype = String(linkDoctype || "").trim();
 					if (!doctype) return "";
 					this._linkValueCache = this._linkValueCache || {};
-					const key = `${doctype}::${String(hint || "").trim().toLowerCase()}`;
+					const shouldCreate = Boolean(opts?.create_if_missing);
+					const key = `${doctype}::${String(hint || "").trim().toLowerCase()}::${shouldCreate ? "create" : "read"}`;
 					if (this._linkValueCache[key]) return this._linkValueCache[key];
 					try {
 						const res = await frappe.call("erpnext_ai_tutor.api.get_link_demo_value", {
 							doctype,
 							hint: String(hint || "").trim(),
+							create_if_missing: shouldCreate ? 1 : 0,
 						});
 						const msg = res?.message || {};
 						const value = String(msg?.value || "").trim();
 						if (value) {
 							this._linkValueCache[key] = value;
+							if (Boolean(msg?.created) && opts?.report_created) {
+								this.emitProgress(`🧱 \`${doctype}\` bo'yicha demo yozuv yaratildi: **${value}**.`);
+							}
 							return value;
 						}
 					} catch {
@@ -1578,7 +1587,7 @@
 					return "";
 				}
 
-				async resolvePlanValue(df, rawValue) {
+				async resolvePlanValue(df, rawValue, opts = {}) {
 					const fieldtype = String(df?.fieldtype || "").trim();
 					const fieldname = String(df?.fieldname || "").trim().toLowerCase();
 					if (fieldname === "stock_entry_type") {
@@ -1591,7 +1600,11 @@
 					if (fieldtype === "Link") {
 						const linkDoctype = String(df?.options || "").trim();
 						const hint = String(rawValue || "").trim();
-						return await this.fetchLinkDemoValue(linkDoctype, hint);
+						const allowCreateLink = Boolean(opts?.allowCreateLink);
+						return await this.fetchLinkDemoValue(linkDoctype, hint, {
+							create_if_missing: allowCreateLink,
+							report_created: allowCreateLink,
+						});
 					}
 					if (fieldtype === "Select") {
 						const options = this.parseFieldOptions(df?.options);
@@ -1815,7 +1828,9 @@
 							continue;
 						}
 
-						const valueToType = await this.resolvePlanValue(df, plan?.value);
+						const valueToType = await this.resolvePlanValue(df, plan?.value, {
+							allowCreateLink: Boolean(this._allowDependencyCreation && df?.reqd),
+						});
 						if (!this.isFieldValueFilled(df, valueToType)) {
 							const linkDoctype = String(df?.options || "").trim();
 							if (String(df?.fieldtype || "").trim() === "Link" && Boolean(df?.reqd) && linkDoctype) {
@@ -1896,7 +1911,9 @@
 							const currentVal = this.readFieldValue(fieldname);
 							if (this.isFieldValueFilled(df, currentVal) && !this.isControlInvalid(fieldname)) continue;
 
-							const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df));
+							const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df), {
+								allowCreateLink: Boolean(this._allowDependencyCreation),
+							});
 							if (!this.isFieldValueFilled(df, valueToType)) {
 								const linkDoctype = String(df?.options || "").trim();
 								if (String(df?.fieldtype || "").trim() === "Link" && linkDoctype) {
@@ -2046,12 +2063,19 @@
 
 					const metaFields = Array.isArray(frm.meta?.fields) ? frm.meta.fields : [];
 					const itemsDf = metaFields.find((df) => String(df?.fieldname || "").trim() === "items");
-					if (!itemsDf || !Boolean(itemsDf.reqd) || Boolean(itemsDf.read_only) || Boolean(itemsDf.hidden)) {
+					if (!itemsDf || Boolean(itemsDf.read_only) || Boolean(itemsDf.hidden)) {
 						return { filled: 0, filledLabels: [], blockedLinkHints: [] };
 					}
 
 					const grid = frm.fields_dict?.items?.grid;
 					if (!grid) return { filled: 0, filledLabels: [], blockedLinkHints: [] };
+					const childFields = Array.isArray(grid.docfields) ? grid.docfields : [];
+					const requiredChildFields = childFields.filter((df) => {
+						if (!df || !df.fieldname) return false;
+						if (!Boolean(df.reqd) || Boolean(df.read_only) || Boolean(df.hidden)) return false;
+						return !this.isStructFieldType(df.fieldtype);
+					});
+					if (!requiredChildFields.length) return { filled: 0, filledLabels: [], blockedLinkHints: [] };
 
 					const blockedLinkHints = [];
 					const filledLabels = [];
@@ -2065,13 +2089,9 @@
 					}
 					if (!row) return { filled, filledLabels, blockedLinkHints };
 
-					const childFields = Array.isArray(grid.docfields) ? grid.docfields : [];
-					for (const df of childFields) {
+					for (const df of requiredChildFields) {
 						if (!this.running) break;
-						if (!df || !df.fieldname) continue;
-						if (!Boolean(df.reqd) || Boolean(df.read_only) || Boolean(df.hidden)) continue;
 						const fieldtype = String(df.fieldtype || "").trim();
-						if (this.isStructFieldType(fieldtype)) continue;
 
 						const fieldname = String(df.fieldname || "").trim();
 						if (!fieldname) continue;
@@ -2079,7 +2099,9 @@
 						if (this.isFieldValueFilled(df, currentVal)) continue;
 
 						const label = String(df.label || fieldname).trim();
-						const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df));
+						const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df), {
+							allowCreateLink: Boolean(this._allowDependencyCreation),
+						});
 						if (!this.isFieldValueFilled(df, valueToType)) {
 							const linkDoctype = String(df?.options || "").trim();
 							if (fieldtype === "Link" && linkDoctype) {
@@ -2257,7 +2279,10 @@
 						}
 					}
 
-					const itemCode = await this.fetchLinkDemoValue("Item", "");
+					const itemCode = await this.fetchLinkDemoValue("Item", "", {
+						create_if_missing: Boolean(this._allowDependencyCreation),
+						report_created: Boolean(this._allowDependencyCreation),
+					});
 					if (!itemCode) {
 						blockedLinkHints.push("**Item Code** (Link: Item)");
 						return { filled, filledLabels, blockedLinkHints };
@@ -2317,12 +2342,16 @@
 			async runCreateRecordTutorial(guide) {
 				if (!this.isCreateTutorial(guide)) return { ok: true, reached_target: true, message: "" };
 				const doctype = this.getTutorialDoctype(guide);
-				this._tutorialStockEntryTypePreference =
-					String(doctype || "").trim().toLowerCase() === "stock entry"
-						? this.normalizeStockEntryTypePreference(guide?.tutorial?.stock_entry_type_preference)
-						: "";
-				const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
-				this.emitProgress(`🚀 **${doctype}** bo'yicha amaliy ko'rsatishni boshladim.`);
+					this._tutorialStockEntryTypePreference =
+						String(doctype || "").trim().toLowerCase() === "stock entry"
+							? this.normalizeStockEntryTypePreference(guide?.tutorial?.stock_entry_type_preference)
+							: "";
+					this._allowDependencyCreation = guide?.tutorial?.allow_dependency_creation === true;
+					const stage = String(guide?.tutorial?.stage || "open_and_fill_basic").trim().toLowerCase();
+					this.emitProgress(`🚀 **${doctype}** bo'yicha amaliy ko'rsatishni boshladim.`);
+					if (this._allowDependencyCreation) {
+						this.emitProgress("🧰 Kerakli bog'liq masterlar topilmasa, demo uchun avtomatik yaratib davom etaman.");
+					}
 
 				if (!this.isOnDoctypeNewForm(doctype)) {
 					if (guide.route && !this.isAtRoute(guide.route)) {
@@ -2517,31 +2546,35 @@
 									: `ℹ️ Keyingi amaliy bosqichda birga tasdiqlanadigan maydonlar: ${backgroundFilledLabels.join(", ")}.`
 							);
 						}
-					if (missingRequiredLabels.length) {
-						const details = describeBackgroundEntries(backgroundFilledEntries);
-						this.emitProgress(
-							`⚠️ Majburiy maydonlar hali to'lmadi: ${missingRequiredLabels.join(", ")}. Jarayon to'liq tugamadi.`
-						);
-						if (blockedLinkHints.length) {
-							this.emitProgress(`🧩 Bog'liq master yozuvlar kerak: ${blockedLinkHints.join(", ")}.`);
-						}
-							return {
-								ok: true,
-								reached_target: true,
-								message:
-									filled > 0
-											? `UI tasdiqlagan ${filled} ta maydon to'ldirildi (${filledLabels.join(
+						if (missingRequiredLabels.length) {
+							const details = describeBackgroundEntries(backgroundFilledEntries);
+							this.emitProgress(
+								`⚠️ Majburiy maydonlar hali to'lmadi: ${missingRequiredLabels.join(", ")}. Jarayon to'liq tugamadi.`
+							);
+							if (blockedLinkHints.length) {
+								this.emitProgress(`🧩 Bog'liq master yozuvlar kerak: ${blockedLinkHints.join(", ")}.`);
+							}
+							const enableAutoCreateHint =
+								blockedLinkHints.length && !this._allowDependencyCreation
+									? " Agar xohlasangiz `ha, davom et` deb yozing - keyingi urinishda kerakli demo masterlarni yaratib davom etaman."
+									: "";
+								return {
+									ok: true,
+									reached_target: true,
+									message:
+										filled > 0
+												? `UI tasdiqlagan ${filled} ta maydon to'ldirildi (${filledLabels.join(
+														", "
+													)}), lekin dars tugamadi. Majburiy maydonlar qolgan: ${missingRequiredLabels.join(", ")}.${
+														backgroundFilledLabels.length
+															? ` Keyingi amaliy bosqichda tasdiqlanadigan maydonlar: ${details || backgroundFilledLabels.join(", ")}.`
+															: ""
+													}${enableAutoCreateHint}`
+											: `Forma ochildi, lekin majburiy maydonlar hali bo'sh: ${missingRequiredLabels.join(
 													", "
-												)}), lekin dars tugamadi. Majburiy maydonlar qolgan: ${missingRequiredLabels.join(", ")}.${
-													backgroundFilledLabels.length
-														? ` Keyingi amaliy bosqichda tasdiqlanadigan maydonlar: ${details || backgroundFilledLabels.join(", ")}.`
-														: ""
-												}`
-										: `Forma ochildi, lekin majburiy maydonlar hali bo'sh: ${missingRequiredLabels.join(
-												", "
-											)}. Avval shu maydonlarni to'ldiramiz.`,
-							};
-						}
+												)}. Avval shu maydonlarni to'ldiramiz.${enableAutoCreateHint}`,
+								};
+							}
 						this.emitProgress(
 							filled > 0
 								? `🎯 UI tasdiqlagan maydonlar: ${filledLabels.join(", ")}. Endi keyingi bosqichga o'tish mumkin.`
@@ -2562,7 +2595,6 @@
 										: "Forma ochildi, lekin avtomatik to'ldirishga mos maydon topilmadi. Qaysi maydondan boshlaymiz?",
 						};
 					}
-
 		getSearchQuery(guide, step) {
 			const stepLabel = String(step?.label || "").trim();
 			const targetLabel = String(guide?.target_label || "").trim();

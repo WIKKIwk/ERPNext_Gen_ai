@@ -30,6 +30,11 @@ CONTINUE_ACTION_RE = re.compile(
 	re.IGNORECASE,
 )
 
+DEPENDENCY_CREATE_RE = re.compile(
+	r"(?:\b(?:ha|xa|yes|ok(?:ay)?|mayli|xo['’]?p|hop|bo['’]?ladi|davom|continue|yarat[a-z\u0400-\u04FF'’_-]*|create)\b)",
+	re.IGNORECASE,
+)
+
 SHOW_SAVE_RE = re.compile(
 	r"(?:\b(?:save|submit|saqla|saqlash|сохран|отправ)\b)",
 	re.IGNORECASE,
