@@ -111,7 +111,6 @@ def maybe_handle_training_flow(
 		state_doctype=state_doctype,
 		context_doctype=context_doctype,
 		intent_doctype=intent_doctype,
-		resolve_training_target=resolve_training_target,
 	)
 	if manage_roles_reply is not None:
 		return manage_roles_reply

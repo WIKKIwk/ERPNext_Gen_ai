@@ -13,7 +13,7 @@ from erpnext_ai_tutor.tutor.training_steps import (
 	_build_continue_step_response,
 	_build_start_step_response,
 )
-from erpnext_ai_tutor.tutor.training_targets import _doctype_to_slug
+from erpnext_ai_tutor.tutor.training_targets import _doctype_to_slug, _target_from_doctype
 
 
 def _pending_target_clarify_response(lang: str) -> Dict[str, Any]:
@@ -165,14 +165,21 @@ def _handle_manage_roles_intent(
 	state_doctype: str,
 	context_doctype: str,
 	intent_doctype: str,
-	resolve_training_target: Callable[..., Dict[str, Any]],
 ) -> Dict[str, Any] | None:
 	if not manage_roles_requested:
 		return None
 
-	fallback_doctype = intent_doctype or context_doctype or state_doctype or "User"
-	target = resolve_training_target(allow_context_fallback=True, fallback_doctype=fallback_doctype)
-	doctype = str(target.get("doctype") or fallback_doctype or "User").strip() or "User"
+	intent_norm = str(intent_doctype or "").strip().lower()
+	# Role assignment flow should anchor on User card; avoid drifting to Role list.
+	if intent_norm in {"", "role", "has role", "role profile", "user permission"}:
+		doctype = "User"
+	else:
+		doctype = str(intent_doctype or "").strip() or "User"
+
+	target = _target_from_doctype(doctype)
+	if not target and doctype != "User":
+		doctype = "User"
+		target = _target_from_doctype("User")
 	route = str(target.get("route") or f"/app/{_doctype_to_slug(doctype)}").strip()
 	menu_path = target.get("menu_path") or [doctype]
 	return _build_training_reply(

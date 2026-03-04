@@ -208,12 +208,22 @@ class TrainingFlowLogicTests(unittest.TestCase):
 			state_doctype="",
 			context_doctype="",
 			intent_doctype="User",
-			resolve_training_target=lambda **kwargs: {"doctype": "User", "route": "/app/user", "menu_path": ["Users", "User"]},
 		)
 		self.assertEqual(result.get("guide", {}).get("route"), "/app/user")
 		self.assertEqual(result.get("guide", {}).get("target_label"), "User")
 		self.assertNotIn("tutorial", result.get("guide", {}))
 		self.assertEqual(result.get("tutor_state"), {})
+
+	def test_manage_roles_intent_prefers_user_even_when_intent_mentions_role(self):
+		result = _handle_manage_roles_intent(
+			lang="uz",
+			manage_roles_requested=True,
+			state_doctype="BOM",
+			context_doctype="Role",
+			intent_doctype="Role",
+		)
+		self.assertEqual(result.get("guide", {}).get("target_label"), "User")
+		self.assertEqual(result.get("guide", {}).get("route"), "/app/user")
 
 
 if __name__ == "__main__":
