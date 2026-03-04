@@ -265,17 +265,17 @@
 				this.guidedRunActive = true;
 				this.autoHelpDisabledUntil = Math.max(prevAutoHelpDisabledUntil, Date.now() + 45000);
 				try {
+					const routeKey = this.routeKey || this.getRouteKey();
 					const runResult = await this.guideRunner.run(guide, {
 						onProgress: (text) => {
-							if (opts?.auto) return;
-							this.append("assistant", String(text), { route_key: this.routeKey || this.getRouteKey() });
+							this.append("assistant", String(text), { route_key: routeKey });
 						},
 					});
-					if (runResult?.already_there && !opts?.auto) {
+					if (runResult?.already_there) {
 						this.append(
 							"assistant",
 						String(runResult?.message || "Siz allaqachon shu yerdasiz."),
-						{ route_key: this.routeKey || this.getRouteKey() }
+						{ route_key: routeKey }
 					);
 				}
 
@@ -292,28 +292,26 @@
 					this.markGuideActionCompleted(messageTs, guide);
 					this.completeGuideButton(triggerEl);
 				}
-				if (runResult?.ok && runResult?.message && !opts?.auto) {
+				if (runResult?.ok && runResult?.message) {
 					this.append(
 						"assistant",
 						String(runResult.message),
-						{ route_key: this.routeKey || this.getRouteKey() }
+						{ route_key: routeKey }
 					);
 				}
-				if (!runResult?.ok && !opts?.auto) {
+				if (!runResult?.ok) {
 					this.append(
 						"assistant",
 						String(runResult?.message || "Yo'riqnoma bajarilmadi. Sahifani tekshirib qayta urinib ko'ring."),
-						{ route_key: this.routeKey || this.getRouteKey() }
+						{ route_key: routeKey }
 					);
 				}
 			} catch {
-				if (!opts?.auto) {
-					this.append(
-						"assistant",
-						"Kursor yo‘riqnomani ishga tushirib bo‘lmadi. Sahifani yangilab qayta urinib ko‘ring.",
-						{ route_key: this.routeKey || this.getRouteKey() }
-					);
-				}
+				this.append(
+					"assistant",
+					"Kursor yo‘riqnomani ishga tushirib bo‘lmadi. Sahifani yangilab qayta urinib ko‘ring.",
+					{ route_key: this.routeKey || this.getRouteKey() }
+				);
 			} finally {
 				this.guidedRunActive = false;
 				this.autoHelpDisabledUntil = Math.max(Number(this.autoHelpDisabledUntil || 0), prevAutoHelpDisabledUntil);
