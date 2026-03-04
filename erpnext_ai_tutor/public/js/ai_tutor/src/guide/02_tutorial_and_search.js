@@ -784,8 +784,23 @@
 					let filled = 0;
 					const filledLabels = [];
 					const backgroundFilledLabels = [];
+					const backgroundFilledEntries = [];
 					const blockedLinkHints = [];
 					const failedRequired = new Set();
+					const addBackgroundEntry = (label, value, reason = "") => {
+						const safeLabel = String(label || "").trim();
+						if (!safeLabel) return;
+						const safeValue = String(value === null || value === undefined ? "" : value).trim();
+						const safeReason = String(reason || "").trim();
+						if (!backgroundFilledLabels.includes(safeLabel)) backgroundFilledLabels.push(safeLabel);
+						const exists = backgroundFilledEntries.some((x) => String(x?.label || "").trim() === safeLabel);
+						if (exists) return;
+						backgroundFilledEntries.push({
+							label: safeLabel,
+							value: safeValue,
+							reason: safeReason || "demo ko'rsatish uchun",
+						});
+					};
 					for (const plan of plans) {
 						if (!this.running) break;
 						const fieldname = String(plan?.fieldname || "").trim();
@@ -821,7 +836,7 @@
 						if (!input) {
 							const modelOnlyOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
 								if (modelOnlyOk) {
-									if (!backgroundFilledLabels.includes(label)) backgroundFilledLabels.push(label);
+									addBackgroundEntry(label, valueToType, reason);
 									this.emitProgress(
 										`ℹ️ **${label}** qiymati tayyorlandi. Endi bu maydonni ekranda cursor bilan bosib, amalda birga tasdiqlaymiz.`
 									);
@@ -854,7 +869,7 @@
 						} else {
 							const fallbackOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
 								if (fallbackOk) {
-									if (!backgroundFilledLabels.includes(label)) backgroundFilledLabels.push(label);
+									addBackgroundEntry(label, valueToType, reason);
 									this.emitProgress(
 										`ℹ️ **${label}** qiymati tayyorlandi. Endi UI'da shu maydonni birga bosib tasdiqlaymiz.`
 									);
@@ -866,7 +881,7 @@
 
 					// Dynamic required-field sweep:
 					// after each successful fill, ERPNext may reveal new required fields.
-					for (let round = 0; round < 3 && this.running; round++) {
+					for (let round = 0; round < 5 && this.running; round++) {
 						const missingNow = this.collectMissingRequiredFields(doctype);
 						if (!missingNow.length) break;
 						let roundProgress = false;
@@ -898,8 +913,13 @@
 								if (!input) {
 									const modelOnlyOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
 									if (modelOnlyOk) {
-										if (!backgroundFilledLabels.includes(label)) backgroundFilledLabels.push(label);
-										failedRequired.add(fieldname);
+										const afterModelOnly = this.readFieldValue(fieldname);
+										if (this.isFieldValueFilled(df, afterModelOnly) && !this.isControlInvalid(fieldname)) {
+											addBackgroundEntry(label, valueToType, "majburiy maydonni to'ldirish uchun");
+											roundProgress = true;
+										} else {
+											failedRequired.add(fieldname);
+										}
 									} else {
 										failedRequired.add(fieldname);
 									}
@@ -930,8 +950,13 @@
 								} else {
 									const fallbackOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
 									if (fallbackOk) {
-										if (!backgroundFilledLabels.includes(label)) backgroundFilledLabels.push(label);
-										failedRequired.add(fieldname);
+										const afterFallback = this.readFieldValue(fieldname);
+										if (this.isFieldValueFilled(df, afterFallback) && !this.isControlInvalid(fieldname)) {
+											addBackgroundEntry(label, valueToType, "majburiy maydonni to'ldirish uchun");
+											roundProgress = true;
+										} else {
+											failedRequired.add(fieldname);
+										}
 									} else {
 										failedRequired.add(fieldname);
 									}
@@ -944,10 +969,80 @@
 							filled,
 							filledLabels,
 							backgroundFilledLabels,
+							backgroundFilledEntries,
 							missingRequiredLabels: missingRequired.map((x) => String(x.label || x.fieldname || "").trim()).filter(Boolean),
 							blockedLinkHints: [...new Set(blockedLinkHints)],
 						};
 					}
+
+				async fillRequiredItemsTableDemo() {
+					const frm = window.cur_frm;
+					if (!frm) return { filled: 0, filledLabels: [], blockedLinkHints: [] };
+
+					const metaFields = Array.isArray(frm.meta?.fields) ? frm.meta.fields : [];
+					const itemsDf = metaFields.find((df) => String(df?.fieldname || "").trim() === "items");
+					if (!itemsDf || !Boolean(itemsDf.reqd) || Boolean(itemsDf.read_only) || Boolean(itemsDf.hidden)) {
+						return { filled: 0, filledLabels: [], blockedLinkHints: [] };
+					}
+
+					const grid = frm.fields_dict?.items?.grid;
+					if (!grid) return { filled: 0, filledLabels: [], blockedLinkHints: [] };
+
+					const blockedLinkHints = [];
+					const filledLabels = [];
+					let filled = 0;
+
+					let row = Array.isArray(frm.doc?.items) ? frm.doc.items[0] : null;
+					if (!row) {
+						row = frm.add_child("items");
+						frm.refresh_field("items");
+						await this.sleep(120);
+					}
+					if (!row) return { filled, filledLabels, blockedLinkHints };
+
+					const childFields = Array.isArray(grid.docfields) ? grid.docfields : [];
+					for (const df of childFields) {
+						if (!this.running) break;
+						if (!df || !df.fieldname) continue;
+						if (!Boolean(df.reqd) || Boolean(df.read_only) || Boolean(df.hidden)) continue;
+						const fieldtype = String(df.fieldtype || "").trim();
+						if (this.isStructFieldType(fieldtype)) continue;
+
+						const fieldname = String(df.fieldname || "").trim();
+						if (!fieldname) continue;
+						const currentVal = row[fieldname];
+						if (this.isFieldValueFilled(df, currentVal)) continue;
+
+						const label = String(df.label || fieldname).trim();
+						const valueToType = await this.resolvePlanValue(df, this.defaultDemoValueForField(df));
+						if (!this.isFieldValueFilled(df, valueToType)) {
+							const linkDoctype = String(df?.options || "").trim();
+							if (fieldtype === "Link" && linkDoctype) {
+								blockedLinkHints.push(`**${label}** (Link: ${linkDoctype})`);
+							}
+							continue;
+						}
+
+						const ok = await this.setStockRowValue(row, fieldname, valueToType, label);
+						if (ok) {
+							filled += 1;
+							if (!filledLabels.includes(label)) filledLabels.push(label);
+						} else {
+							const linkDoctype = String(df?.options || "").trim();
+							if (fieldtype === "Link" && linkDoctype) {
+								blockedLinkHints.push(`**${label}** (Link: ${linkDoctype})`);
+							}
+						}
+					}
+
+					frm.refresh_field("items");
+					await this.sleep(120);
+					return {
+						filled,
+						filledLabels,
+						blockedLinkHints: [...new Set(blockedLinkHints)],
+					};
+				}
 
 				detectStockEntryPurpose() {
 					const raw = String(this.readFieldValue("stock_entry_type") || this.readFieldValue("purpose") || "")
@@ -1330,7 +1425,23 @@
 					let filled = 0;
 					const filledLabels = [];
 					const backgroundFilledLabels = [];
+					const backgroundFilledEntries = [];
 					let blockedLinkHints = [];
+					const describeBackgroundEntries = (entries) => {
+						const rows = [];
+						for (const row of Array.isArray(entries) ? entries : []) {
+							const label = String(row?.label || "").trim();
+							if (!label) continue;
+							const value = String(row?.value === null || row?.value === undefined ? "" : row.value).trim();
+							if (value) {
+								rows.push(`${label}=\`${value}\``);
+							} else {
+								rows.push(label);
+							}
+						}
+						if (!rows.length) return "";
+						return rows.slice(0, 8).join(", ");
+					};
 					const mergeFillStats = (result) => {
 						const inc = Number(result?.filled || 0);
 						if (inc > 0) filled += inc;
@@ -1339,6 +1450,18 @@
 						}
 						for (const label of Array.isArray(result?.backgroundFilledLabels) ? result.backgroundFilledLabels : []) {
 							if (label && !backgroundFilledLabels.includes(label)) backgroundFilledLabels.push(label);
+						}
+						for (const row of Array.isArray(result?.backgroundFilledEntries) ? result.backgroundFilledEntries : []) {
+							const label = String(row?.label || "").trim();
+							if (!label) continue;
+							const exists = backgroundFilledEntries.some((x) => String(x?.label || "").trim() === label);
+							if (!exists) {
+								backgroundFilledEntries.push({
+									label,
+									value: String(row?.value === null || row?.value === undefined ? "" : row.value).trim(),
+									reason: String(row?.reason || "").trim(),
+								});
+							}
 						}
 						const blocked = Array.isArray(result?.blockedLinkHints) ? result.blockedLinkHints : [];
 						blockedLinkHints = [...new Set([...blockedLinkHints, ...blocked])];
@@ -1361,6 +1484,9 @@
 						const deepFillResult = await this.fillFormFields(doctype, "fill_more", deepPlanResult.plan);
 						mergeFillStats(deepFillResult);
 					}
+
+					const requiredItemsTableResult = await this.fillRequiredItemsTableDemo();
+					mergeFillStats(requiredItemsTableResult);
 
 					if (String(doctype || "").trim().toLowerCase() === "stock entry") {
 						this.emitProgress("🧠 Stock Entry uchun qator maydonlarini ham aqlli to'ldiraman (Item, Qty, Warehouse).");
@@ -1387,11 +1513,15 @@
 						});
 					}
 						if (backgroundFilledLabels.length) {
+							const details = describeBackgroundEntries(backgroundFilledEntries);
 							this.emitProgress(
-								`ℹ️ Keyingi amaliy bosqichda birga tasdiqlanadigan maydonlar: ${backgroundFilledLabels.join(", ")}.`
+								details
+									? `ℹ️ Keyingi amaliy bosqichda birga tasdiqlanadigan maydonlar: ${details}.`
+									: `ℹ️ Keyingi amaliy bosqichda birga tasdiqlanadigan maydonlar: ${backgroundFilledLabels.join(", ")}.`
 							);
 						}
 					if (missingRequiredLabels.length) {
+						const details = describeBackgroundEntries(backgroundFilledEntries);
 						this.emitProgress(
 							`⚠️ Majburiy maydonlar hali to'lmadi: ${missingRequiredLabels.join(", ")}. Jarayon to'liq tugamadi.`
 						);
@@ -1407,7 +1537,7 @@
 													", "
 												)}), lekin dars tugamadi. Majburiy maydonlar qolgan: ${missingRequiredLabels.join(", ")}.${
 													backgroundFilledLabels.length
-														? ` Keyingi amaliy bosqichda tasdiqlanadigan maydonlar: ${backgroundFilledLabels.join(", ")}.`
+														? ` Keyingi amaliy bosqichda tasdiqlanadigan maydonlar: ${details || backgroundFilledLabels.join(", ")}.`
 														: ""
 												}`
 										: `Forma ochildi, lekin majburiy maydonlar hali bo'sh: ${missingRequiredLabels.join(
@@ -1427,13 +1557,11 @@
 									filled > 0
 										? `UI tasdiqlagan ${filled} ta maydonni demo tarzda to'ldirdim: ${filledLabels.join(", ")}.${
 												backgroundFilledLabels.length
-													? ` Endi navbatdagi amaliy maydonlar: ${backgroundFilledLabels.join(", ")}.`
+													? ` Endi navbatdagi amaliy maydonlar: ${describeBackgroundEntries(backgroundFilledEntries) || backgroundFilledLabels.join(", ")}.`
 													: ""
 											} Keyingi bosqichni aytsangiz davom etaman.`
 									: backgroundFilledLabels.length
-										? `UIda tasdiqlangan to'ldirish bo'lmadi. Fon fallback bilan qiymat berilgan maydonlar: ${backgroundFilledLabels.join(
-												", "
-											)}. Endi ularni birga tekshiramiz.`
+										? `UIda tasdiqlangan to'ldirish bo'lmadi. Fon fallback bilan qiymat berilgan maydonlar: ${describeBackgroundEntries(backgroundFilledEntries) || backgroundFilledLabels.join(", ")}. Endi ularni birga tekshiramiz.`
 										: "Forma ochildi, lekin avtomatik to'ldirishga mos maydon topilmadi. Qaysi maydondan boshlaymiz?",
 						};
 					}
