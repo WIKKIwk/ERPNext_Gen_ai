@@ -312,6 +312,13 @@
 					});
 				};
 				this.emitProgress(`🔐 **${doctype}** uchun role qo'shish bosqichini boshladim.`);
+				const isRolesSectionVisible = () => {
+					const root = document.querySelector(".frappe-control[data-fieldname='roles']");
+					return Boolean(root && isVisible(root));
+				};
+				let rolesTabActivated = false;
+				let addRowClicked = false;
+				let roleInputReady = false;
 
 				if (guide?.route && !this.isAtRoute(guide.route)) {
 					const opened = await this.navigate(guide.route);
@@ -374,16 +381,30 @@
 					}
 				}
 				if (rolesTab) {
-					await this.focusElement(rolesTab, "`Roles & Permissions` bo'limiga o'tamiz.", {
+					const clicked = await this.focusElement(rolesTab, "`Roles & Permissions` bo'limiga o'tamiz.", {
 						click: true,
 						duration_ms: 300,
 						pre_click_pause_ms: 120,
 					});
+					rolesTabActivated = Boolean(clicked);
+					this.traceTutorialEvent("manage_roles.roles_tab", {
+						found: true,
+						clicked: Boolean(clicked),
+					});
 					await this.sleep(180);
+				} else {
+					this.traceTutorialEvent("manage_roles.roles_tab", {
+						found: false,
+						clicked: false,
+					});
 				}
 
 				const rolesRoot = await this.waitFor(
-					() => document.querySelector(".frappe-control[data-fieldname='roles']"),
+					() => {
+						const root = document.querySelector(".frappe-control[data-fieldname='roles']");
+						if (!root || !isVisible(root)) return null;
+						return root;
+					},
 					2600,
 					120
 				);
@@ -391,21 +412,41 @@
 					return await finish({
 						ok: false,
 						reached_target: false,
-						message: "`Roles` jadvalini topa olmadim. Sahifani yangilab qayta urinib ko'ring.",
+						message: "`Roles & Permissions` bo'limini ochib bo'lmadi. Shu tabni qo'lda ochib, yana `davom et` deb yozing.",
 					}, "roles_table_missing");
 				}
+				rolesTabActivated = rolesTabActivated || isRolesSectionVisible();
 
 				const addRowBtn =
 					rolesRoot.querySelector(".grid-add-row") ||
 					rolesRoot.querySelector(".btn[data-label*='Add Row']") ||
 					rolesRoot.querySelector("button[data-label*='Add Row']");
 				if (addRowBtn && isVisible(addRowBtn)) {
-					await this.focusElement(addRowBtn, "`Add Row` ni bosib yangi role qatori ochamiz.", {
+					const clicked = await this.focusElement(addRowBtn, "`Add Row` ni bosib yangi role qatori ochamiz.", {
 						click: true,
 						duration_ms: 300,
 						pre_click_pause_ms: 120,
 					});
+					addRowClicked = Boolean(clicked);
+					this.traceTutorialEvent("manage_roles.add_row", {
+						found: true,
+						clicked: Boolean(clicked),
+					});
 					await this.sleep(180);
+				} else {
+					this.traceTutorialEvent("manage_roles.add_row", {
+						found: false,
+						clicked: false,
+					});
+				}
+				if (!addRowClicked) {
+					return await finish({
+						ok: false,
+						reached_target: false,
+						message: "`Add Row` tugmasini topib bosolmadim. Roles jadvalini ochiq holatga keltirib, yana `davom et` deb yozing.",
+					}, "roles_add_row_missing", {
+						roles_tab_activated: rolesTabActivated,
+					});
 				}
 
 				const roleInput = await this.waitFor(
@@ -419,6 +460,20 @@
 					await this.focusElement(roleInput, "Endi shu yerga kerakli roleni tanlaymiz (masalan: System Manager).", {
 						click: false,
 						duration_ms: 260,
+					});
+					roleInputReady = true;
+				}
+				this.traceTutorialEvent("manage_roles.role_input", {
+					ready: Boolean(roleInputReady),
+				});
+				if (!roleInputReady) {
+					return await finish({
+						ok: false,
+						reached_target: false,
+						message: "Role tanlash maydoni ochilmadi. `Add Row` ni qo'lda bir marta bosib, yana `davom et` deb yozing.",
+					}, "roles_input_missing", {
+						roles_tab_activated: rolesTabActivated,
+						add_row_clicked: addRowClicked,
 					});
 				}
 
