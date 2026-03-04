@@ -258,9 +258,17 @@
 								? tutorialRaw.field_overrides
 								: {};
 						const fieldOverrides = {};
+						const allowedOverrideFields = new Set(["email", "first_name", "middle_name", "last_name", "username"]);
+						const overrideAliases = {
+							user_name: "username",
+							login: "username",
+							name: "first_name",
+							full_name: "first_name",
+						};
 						for (const [rawField, rawCfg] of Object.entries(fieldOverridesRaw)) {
-							const fieldname = String(rawField || "").trim().toLowerCase();
-							if (fieldname !== "email") continue;
+							const rawKey = String(rawField || "").trim().toLowerCase();
+							const fieldname = overrideAliases[rawKey] || rawKey;
+							if (!allowedOverrideFields.has(fieldname)) continue;
 							if (!rawCfg || typeof rawCfg !== "object") continue;
 							const overwrite = rawCfg.overwrite === true;
 							const value = String(rawCfg.value || "").trim().slice(0, 160);

@@ -244,9 +244,17 @@
 							? tutorialRaw.field_overrides
 							: {};
 					const fieldOverrides = {};
+					const allowedOverrideFields = new Set(["email", "first_name", "middle_name", "last_name", "username"]);
+					const overrideAliases = {
+						user_name: "username",
+						login: "username",
+						name: "first_name",
+						full_name: "first_name",
+					};
 					for (const [rawField, rawCfg] of Object.entries(fieldOverridesRaw)) {
-						const fieldname = String(rawField || "").trim().toLowerCase();
-						if (fieldname !== "email") continue;
+						const rawKey = String(rawField || "").trim().toLowerCase();
+						const fieldname = overrideAliases[rawKey] || rawKey;
+						if (!allowedOverrideFields.has(fieldname)) continue;
 						if (!rawCfg || typeof rawCfg !== "object") continue;
 						const overwrite = rawCfg.overwrite === true;
 						const value = String(rawCfg.value || "").trim().slice(0, 160);
@@ -1763,6 +1771,21 @@
 					return candidate;
 				}
 
+				makeAlternativeTextValue(df, currentValue = "", seedValue = "") {
+					const current = String(currentValue || "").trim().toLowerCase();
+					let base = String(seedValue || "").trim();
+					if (!base) {
+						base = this.defaultDemoValueForField(df);
+					}
+					base = String(base || "").trim() || `Demo ${String(df?.label || df?.fieldname || "Value").trim()}`;
+					const suffix = `${Math.floor(Math.random() * 900 + 100)}`;
+					let candidate = `${base} ${suffix}`.trim();
+					if (candidate.toLowerCase() === current) {
+						candidate = `${base} ${suffix}a`.trim();
+					}
+					return candidate;
+				}
+
 					buildMergedFieldPlans(doctype, stage, plannedRows = [], fallbackPlans = []) {
 						const merged = [];
 						const seen = new Set();
@@ -2144,6 +2167,8 @@
 									: this.makeAlternativeEmail(df, currentVal);
 							} else if (overrideValue) {
 								rawValue = overrideValue;
+							} else {
+								rawValue = this.makeAlternativeTextValue(df, currentVal, rawValue);
 							}
 						}
 						let valueToType = await this.resolvePlanValue(df, rawValue, {

@@ -11,6 +11,13 @@ from erpnext_ai_tutor.tutor.training_patterns import (
 from erpnext_ai_tutor.tutor.training_targets import _normalize_menu_path
 
 _FIELDNAME_RE = re.compile(r"^[a-zA-Z0-9_]+$")
+_ALLOWED_USER_OVERRIDE_FIELDS = {"email", "first_name", "middle_name", "last_name", "username"}
+_USER_OVERRIDE_ALIASES = {
+	"user_name": "username",
+	"login": "username",
+	"name": "first_name",
+	"full_name": "first_name",
+}
 
 
 def _normalize_field_overrides(raw_overrides: Any) -> Dict[str, Dict[str, Any]]:
@@ -21,7 +28,8 @@ def _normalize_field_overrides(raw_overrides: Any) -> Dict[str, Dict[str, Any]]:
 		fieldname = str(raw_key or "").strip().lower()
 		if not fieldname or not _FIELDNAME_RE.match(fieldname):
 			continue
-		if fieldname != "email":
+		fieldname = _USER_OVERRIDE_ALIASES.get(fieldname, fieldname)
+		if fieldname not in _ALLOWED_USER_OVERRIDE_FIELDS:
 			continue
 		if not isinstance(raw_cfg, dict):
 			continue

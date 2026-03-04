@@ -387,6 +387,21 @@
 					return candidate;
 				}
 
+				makeAlternativeTextValue(df, currentValue = "", seedValue = "") {
+					const current = String(currentValue || "").trim().toLowerCase();
+					let base = String(seedValue || "").trim();
+					if (!base) {
+						base = this.defaultDemoValueForField(df);
+					}
+					base = String(base || "").trim() || `Demo ${String(df?.label || df?.fieldname || "Value").trim()}`;
+					const suffix = `${Math.floor(Math.random() * 900 + 100)}`;
+					let candidate = `${base} ${suffix}`.trim();
+					if (candidate.toLowerCase() === current) {
+						candidate = `${base} ${suffix}a`.trim();
+					}
+					return candidate;
+				}
+
 					buildMergedFieldPlans(doctype, stage, plannedRows = [], fallbackPlans = []) {
 						const merged = [];
 						const seen = new Set();
@@ -768,6 +783,8 @@
 									: this.makeAlternativeEmail(df, currentVal);
 							} else if (overrideValue) {
 								rawValue = overrideValue;
+							} else {
+								rawValue = this.makeAlternativeTextValue(df, currentVal, rawValue);
 							}
 						}
 						let valueToType = await this.resolvePlanValue(df, rawValue, {

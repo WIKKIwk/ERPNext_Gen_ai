@@ -12,7 +12,27 @@ from erpnext_ai_tutor.tutor.training_targets import _doctype_from_slug, _is_real
 INTENT_MAX_TOKENS = 2048
 _FIELDNAME_RE = re.compile(r"^[a-zA-Z0-9_]+$")
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-_ALLOWED_FIELD_UPDATES = {"email"}
+_ALLOWED_FIELD_UPDATES = {"email", "first_name", "middle_name", "last_name", "username"}
+
+
+def _canonicalize_field_updates(fieldname: str, value: str) -> List[Dict[str, str]]:
+	key = str(fieldname or "").strip().lower()
+	val = str(value or "").strip()
+	if key in {"user_name", "login"}:
+		key = "username"
+	if key in {"name", "full_name"}:
+		if not val:
+			return [{"fieldname": "first_name", "value": ""}]
+		parts = [p for p in re.split(r"\s+", val) if p]
+		if len(parts) >= 2:
+			return [
+				{"fieldname": "first_name", "value": parts[0]},
+				{"fieldname": "last_name", "value": " ".join(parts[1:])},
+			]
+		return [{"fieldname": "first_name", "value": val}]
+	if key in _ALLOWED_FIELD_UPDATES:
+		return [{"fieldname": key, "value": val}]
+	return []
 
 
 def _extract_json_payload(text: str) -> Any:
@@ -81,26 +101,34 @@ def _is_valid_email(value: Any) -> bool:
 def _normalize_field_updates(raw_updates: Any) -> List[Dict[str, Any]]:
 	if not isinstance(raw_updates, list):
 		return []
-	out: List[Dict[str, Any]] = []
+	entries: Dict[str, Dict[str, Any]] = {}
+	order: List[str] = []
 	for row in raw_updates[:10]:
 		if not isinstance(row, dict):
 			continue
 		fieldname = str(row.get("fieldname") or row.get("field") or "").strip().lower()
 		if not fieldname or not _FIELDNAME_RE.match(fieldname):
 			continue
-		if fieldname not in _ALLOWED_FIELD_UPDATES:
-			continue
-		value = str(row.get("value") or "").strip()
-		overwrite = bool(row.get("overwrite")) or bool(value)
-		if fieldname == "email" and value and not _is_valid_email(value):
-			value = ""
-		if not overwrite and not value:
-			continue
-		entry: Dict[str, Any] = {"fieldname": fieldname, "overwrite": overwrite}
-		if value:
-			entry["value"] = value
-		out.append(entry)
-	return out
+		value_raw = str(row.get("value") or "").strip()
+		overwrite_raw = bool(row.get("overwrite"))
+		canonical_rows = _canonicalize_field_updates(fieldname, value_raw)
+		for canonical in canonical_rows:
+			canonical_field = str(canonical.get("fieldname") or "").strip().lower()
+			canonical_value = str(canonical.get("value") or "").strip()
+			if canonical_field not in _ALLOWED_FIELD_UPDATES:
+				continue
+			if canonical_field == "email" and canonical_value and not _is_valid_email(canonical_value):
+				canonical_value = ""
+			overwrite = bool(overwrite_raw) or bool(canonical_value)
+			if not overwrite and not canonical_value:
+				continue
+			entry: Dict[str, Any] = {"fieldname": canonical_field, "overwrite": overwrite}
+			if canonical_value:
+				entry["value"] = canonical_value
+			if canonical_field not in entries:
+				order.append(canonical_field)
+			entries[canonical_field] = entry
+	return [entries[k] for k in order]
 
 
 def _coerce_to_real_doctype(candidate: str) -> str:
@@ -195,7 +223,8 @@ def _infer_training_intent_with_ai(user_message: str, *, has_active_tutorial: bo
 		"- action=show_save when user asks where save/submit is.\n"
 		"- action=manage_roles when user asks to add/assign/remove roles/permissions for an existing User.\n"
 		"- field_updates should be empty unless user semantically asks changing an already entered form value.\n"
-		"- For User email change requests, set field_updates=[{\"fieldname\":\"email\",\"overwrite\":true,\"value\":\"<new email or empty>\"}].\n"
+		"- For User change requests, use canonical fields: email, first_name, middle_name, last_name, username.\n"
+		"- If user says name/full name, map it to first_name (and last_name when clear).\n"
 		"- action=other for plain chat/small talk/non-tutorial questions.\n"
 		"- doctype must be canonical ERPNext DocType name if clear, else empty.\n"
 		"- For action=manage_roles, prefer doctype=User unless user clearly names another security doctype.\n"

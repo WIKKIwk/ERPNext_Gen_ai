@@ -15,6 +15,8 @@ from erpnext_ai_tutor.tutor.training_targets import (
 	_target_from_doctype,
 )
 
+_ALLOWED_USER_OVERRIDE_FIELDS = {"email", "first_name", "middle_name", "last_name", "username"}
+
 
 def _build_field_overrides(intent_field_updates: Any, *, doctype: str) -> Dict[str, Dict[str, Any]]:
 	"""Normalize semantic field-update requests into tutorial override map."""
@@ -27,7 +29,7 @@ def _build_field_overrides(intent_field_updates: Any, *, doctype: str) -> Dict[s
 		if not isinstance(row, dict):
 			continue
 		fieldname = str(row.get("fieldname") or "").strip().lower()
-		if fieldname != "email":
+		if fieldname not in _ALLOWED_USER_OVERRIDE_FIELDS:
 			continue
 		overwrite = bool(row.get("overwrite"))
 		value = str(row.get("value") or "").strip()
@@ -93,6 +95,18 @@ def _build_training_context(user_message: str, ctx: Dict[str, Any]) -> Dict[str,
 		continue_requested = True
 	override_doctype = state_doctype or intent_doctype or context_doctype
 	field_overrides = _build_field_overrides(intent_field_updates, doctype=override_doctype)
+	if (
+		field_overrides
+		and not (state_action == "create_record" and state_doctype)
+		and not show_save_requested
+		and not manage_roles_requested
+	):
+		# Even without active tutorial state, semantic value-change requests on User form
+		# should launch guided flow instead of falling back to plain text advice.
+		create_requested = True
+		practical_tutorial_requested = True
+		if not intent_doctype:
+			intent_doctype = str(override_doctype or "").strip()
 	if state_action == "create_record" and state_doctype and field_overrides and not show_save_requested and not manage_roles_requested:
 		# Semantic "change value" requests should continue active guided flow.
 		continue_requested = True
