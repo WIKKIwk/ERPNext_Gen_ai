@@ -5,6 +5,8 @@ app_description = "Desk-side AI tutor widget with error capture"
 app_email = "wikki@example.com"
 app_license = "Apache-2.0"
 
+from pathlib import Path
+
 # Apps
 # ------------------
 
@@ -25,7 +27,27 @@ app_license = "Apache-2.0"
 # ------------------
 
 # include js, css files in header of desk.html
-ASSET_VERSION = "84"
+def _compute_asset_version() -> str:
+	base = Path(__file__).resolve().parent
+	candidates = [
+		"public/css/ai_tutor_widget.css",
+		"public/js/ai_tutor/utils.js",
+		"public/js/ai_tutor/guide.js",
+		"public/js/ai_tutor/widget_core.js",
+		"public/js/ai_tutor/widget.js",
+		"public/js/ai_tutor/boot.js",
+	]
+	mtimes = []
+	for rel in candidates:
+		path = base / rel
+		try:
+			mtimes.append(int(path.stat().st_mtime))
+		except OSError:
+			continue
+	return str(max(mtimes)) if mtimes else "1"
+
+
+ASSET_VERSION = _compute_asset_version()
 
 app_include_css = f"/assets/erpnext_ai_tutor/css/ai_tutor_widget.css?v={ASSET_VERSION}"
 app_include_js = [
