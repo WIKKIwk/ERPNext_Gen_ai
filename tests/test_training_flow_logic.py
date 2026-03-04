@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+import sys
+import types
+import unittest
+from unittest.mock import patch
+
+
+if "frappe" not in sys.modules:
+	frappe_stub = types.ModuleType("frappe")
+
+	def _scrub(value: str) -> str:
+		return str(value or "").strip().lower().replace(" ", "_")
+
+	class _DBStub:
+		@staticmethod
+		def exists(*args, **kwargs):  # noqa: ANN002, ANN003
+			return False
+
+		@staticmethod
+		def sql(*args, **kwargs):  # noqa: ANN002, ANN003
+			return []
+
+	frappe_stub.scrub = _scrub
+	frappe_stub.db = _DBStub()
+	sys.modules["frappe"] = frappe_stub
+
+if "erpnext_ai_tutor.tutor.training_resolution" not in sys.modules:
+	training_resolution_stub = types.ModuleType("erpnext_ai_tutor.tutor.training_resolution")
+
+	def _resolve_doctype_target_stub(*args, **kwargs):  # noqa: ANN002, ANN003
+		return {}
+
+	training_resolution_stub._resolve_doctype_target = _resolve_doctype_target_stub
+	sys.modules["erpnext_ai_tutor.tutor.training_resolution"] = training_resolution_stub
+
+from erpnext_ai_tutor.tutor.training_handlers import (  # noqa: E402
+	_handle_active_continue,
+	_handle_pending_action,
+	_handle_pending_target,
+)
+from erpnext_ai_tutor.tutor.training_runtime import _resolve_training_target  # noqa: E402
+
+
+class TrainingFlowLogicTests(unittest.TestCase):
+	def test_pending_action_without_target_returns_action_clarify_state(self):
+		result = _handle_pending_action(
+			lang="uz",
+			state_doctype="",
+			create_requested=False,
+			resolve_training_target=lambda **kwargs: {},
+			pick_stock_entry_type=lambda _doctype: "",
+		)
+		self.assertEqual(result.get("tutor_state", {}).get("pending"), "action")
+		self.assertNotIn("guide", result)
+
+	def test_pending_target_without_target_returns_target_clarify_state(self):
+		result = _handle_pending_target(
+			lang="uz",
+			state_doctype="",
+			create_requested=False,
+			resolve_training_target=lambda **kwargs: {},
+			pick_stock_entry_type=lambda _doctype: "",
+		)
+		self.assertEqual(result.get("tutor_state", {}).get("pending"), "target")
+		self.assertEqual(result.get("tutor_state", {}).get("action"), "create_record")
+
+	def test_active_continue_returns_fill_more_stage(self):
+		with patch(
+			"erpnext_ai_tutor.tutor.training_handlers._resolve_doctype_target",
+			return_value={"doctype": "Item", "route": "/app/item", "menu_path": ["Stock", "Item"]},
+		):
+			result = _handle_active_continue(
+				lang="uz",
+				ctx={},
+				state_action="create_record",
+				state_doctype="Item",
+				context_doctype="",
+				continue_requested=True,
+				show_save_requested=False,
+				create_requested=False,
+				explicit_doctype="",
+				pick_stock_entry_type=lambda _doctype: "",
+			)
+		self.assertIsInstance(result, dict)
+		self.assertEqual(result.get("tutor_state", {}).get("stage"), "fill_more")
+		self.assertEqual(result.get("guide", {}).get("tutorial", {}).get("stage"), "fill_more")
+
+	def test_runtime_prefers_context_target_when_state_context_mismatch(self):
+		context_target = {"doctype": "Customer", "route": "/app/customer", "menu_path": ["Selling", "Customer"]}
+
+		def _target_from_doctype_side_effect(doctype: str):
+			if doctype == "Customer":
+				return context_target
+			return {}
+
+		with patch(
+			"erpnext_ai_tutor.tutor.training_runtime._target_from_doctype",
+			side_effect=_target_from_doctype_side_effect,
+		), patch(
+			"erpnext_ai_tutor.tutor.training_runtime._resolve_doctype_target",
+			return_value={"doctype": "Item", "route": "/app/item", "menu_path": ["Stock", "Item"]},
+		) as resolve_fallback:
+			result = _resolve_training_target(
+				explicit_target={},
+				context_doctype="Customer",
+				state_action="create_record",
+				state_doctype="Sales Invoice",
+				explicit_doctype="",
+				intent_doctype="",
+				continue_requested=False,
+				show_save_requested=False,
+				practical_tutorial_requested=False,
+				text_rules="davom et",
+				ctx={},
+				allow_context_fallback=True,
+			)
+		self.assertEqual(result.get("doctype"), "Customer")
+		resolve_fallback.assert_not_called()
+
+
+if __name__ == "__main__":
+	unittest.main()
