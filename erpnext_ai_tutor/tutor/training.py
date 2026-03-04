@@ -19,15 +19,15 @@ from erpnext_ai_tutor.tutor.training_patterns import (
 from erpnext_ai_tutor.tutor.training_resolution import _resolve_doctype_target
 from erpnext_ai_tutor.tutor.training_replies import (
 	_action_clarify_reply,
-	_continue_tutorial_reply,
-	_start_tutorial_reply,
 	_target_clarify_reply,
 )
 from erpnext_ai_tutor.tutor.training_state import (
-	_build_guide_payload,
 	_build_training_reply,
-	_coach_state,
 	_extract_state,
+)
+from erpnext_ai_tutor.tutor.training_steps import (
+	_build_continue_step_response,
+	_build_start_step_response,
 )
 from erpnext_ai_tutor.tutor.training_targets import (
 	_doctype_to_slug,
@@ -135,43 +135,23 @@ def maybe_handle_training_flow(
 		target = _resolve_training_target(allow_context_fallback=False, fallback_doctype=state_doctype)
 		if target:
 			doctype = str(target.get("doctype") or "").strip()
-			reply = _start_tutorial_reply(lang, doctype)
-			guide = _build_guide_payload(
+			return _build_start_step_response(
+				lang=lang,
 				doctype=doctype,
 				route=str(target.get("route") or ""),
 				menu_path=target.get("menu_path") or [],
-				stage="open_and_fill_basic",
 				stock_entry_type_preference=_pick_stock_entry_type(doctype),
-			)
-			return _build_training_reply(
-				reply=reply,
-				guide=guide,
-				tutor_state=_coach_state(
-					doctype,
-					"open_and_fill_basic",
-					stock_entry_type_preference=_pick_stock_entry_type(doctype),
-				),
 			)
 		if create_requested:
 			target = _resolve_training_target(allow_context_fallback=True, fallback_doctype=state_doctype)
 			if target:
 				doctype = str(target.get("doctype") or "").strip()
-				reply = _start_tutorial_reply(lang, doctype)
-				guide = _build_guide_payload(
+				return _build_start_step_response(
+					lang=lang,
 					doctype=doctype,
 					route=str(target.get("route") or ""),
 					menu_path=target.get("menu_path") or [],
-					stage="open_and_fill_basic",
 					stock_entry_type_preference=_pick_stock_entry_type(doctype),
-				)
-				return _build_training_reply(
-					reply=reply,
-					guide=guide,
-					tutor_state=_coach_state(
-						doctype,
-						"open_and_fill_basic",
-						stock_entry_type_preference=_pick_stock_entry_type(doctype),
-					),
 				)
 			return _build_training_reply(
 				reply=_target_clarify_reply(lang),
@@ -189,22 +169,12 @@ def maybe_handle_training_flow(
 				tutor_state={"pending": "target", "action": "create_record", "stage": "open_and_fill_basic"},
 			)
 		doctype = str(target.get("doctype") or "").strip()
-		reply = _start_tutorial_reply(lang, doctype)
-		guide = _build_guide_payload(
+		return _build_start_step_response(
+			lang=lang,
 			doctype=doctype,
 			route=str(target.get("route") or ""),
 			menu_path=target.get("menu_path") or [],
-			stage="open_and_fill_basic",
 			stock_entry_type_preference=_pick_stock_entry_type(doctype),
-		)
-		return _build_training_reply(
-			reply=reply,
-			guide=guide,
-			tutor_state=_coach_state(
-				doctype,
-				"open_and_fill_basic",
-				stock_entry_type_preference=_pick_stock_entry_type(doctype),
-			),
 		)
 
 	if state_action == "create_record" and state_doctype and (continue_requested or show_save_requested):
@@ -228,22 +198,13 @@ def maybe_handle_training_flow(
 			doctype = str(target.get("doctype") or effective_state_doctype).strip()
 			route = str(target.get("route") or f"/app/{_doctype_to_slug(doctype)}")
 			menu_path = target.get("menu_path") or [doctype]
-			reply = _continue_tutorial_reply(lang, doctype, stage)
-			guide = _build_guide_payload(
+			return _build_continue_step_response(
+				lang=lang,
 				doctype=doctype,
+				stage=stage,
 				route=route,
 				menu_path=menu_path,
-				stage=stage,
 				stock_entry_type_preference=_pick_stock_entry_type(doctype),
-			)
-			return _build_training_reply(
-				reply=reply,
-				guide=guide,
-				tutor_state=_coach_state(
-					doctype,
-					stage,
-					stock_entry_type_preference=_pick_stock_entry_type(doctype),
-				),
 			)
 
 	if create_requested or intent_doctype:
@@ -254,22 +215,12 @@ def maybe_handle_training_flow(
 				tutor_state={"pending": "target", "action": "create_record", "stage": "open_and_fill_basic"},
 			)
 		doctype = str(target.get("doctype") or "").strip()
-		reply = _start_tutorial_reply(lang, doctype)
-		guide = _build_guide_payload(
+		return _build_start_step_response(
+			lang=lang,
 			doctype=doctype,
 			route=str(target.get("route") or ""),
 			menu_path=target.get("menu_path") or [],
-			stage="open_and_fill_basic",
 			stock_entry_type_preference=_pick_stock_entry_type(doctype),
-		)
-		return _build_training_reply(
-			reply=reply,
-			guide=guide,
-			tutor_state=_coach_state(
-				doctype,
-				"open_and_fill_basic",
-				stock_entry_type_preference=_pick_stock_entry_type(doctype),
-			),
 		)
 
 	if _needs_action_clarification(text_rules):
