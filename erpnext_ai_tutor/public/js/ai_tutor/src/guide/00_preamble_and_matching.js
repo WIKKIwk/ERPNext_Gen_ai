@@ -234,17 +234,18 @@
 				if (tutorialRaw && typeof tutorialRaw === "object") {
 					const mode = String(tutorialRaw.mode || "").trim().toLowerCase();
 					const stageRaw = String(tutorialRaw.stage || "open_and_fill_basic").trim().toLowerCase();
-					const allowedStages = new Set(["open_and_fill_basic", "fill_more", "show_save_only"]);
-					const stage = allowedStages.has(stageRaw) ? stageRaw : "open_and_fill_basic";
+					const doctype = String(tutorialRaw.doctype || "").trim();
 					const stockEntryTypePreference = normalizeStockEntryTypePreference(
 						tutorialRaw.stock_entry_type_preference
 					);
 					const allowDependencyCreation = tutorialRaw.allow_dependency_creation === true;
 					if (mode === "create_record") {
+						const allowedStages = new Set(["open_and_fill_basic", "fill_more", "show_save_only"]);
+						const stage = allowedStages.has(stageRaw) ? stageRaw : "open_and_fill_basic";
 						tutorial = {
 							mode,
 							stage,
-							doctype: String(tutorialRaw.doctype || "").trim(),
+							doctype,
 						};
 						if (stockEntryTypePreference) {
 							tutorial.stock_entry_type_preference = stockEntryTypePreference;
@@ -252,6 +253,14 @@
 						if (allowDependencyCreation) {
 							tutorial.allow_dependency_creation = true;
 						}
+					} else if (mode === "manage_roles") {
+						const allowedStages = new Set(["open_roles_tab", "add_role_row", "select_role"]);
+						const stage = allowedStages.has(stageRaw) ? stageRaw : "open_roles_tab";
+						tutorial = {
+							mode,
+							stage,
+							doctype: doctype || "User",
+						};
 					}
 				}
 			return {
