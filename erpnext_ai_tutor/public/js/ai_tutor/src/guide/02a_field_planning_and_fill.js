@@ -74,7 +74,32 @@
 					return false;
 				}
 
-					collectPlannerFieldCandidates(doctype) {
+					getTutorialFieldAllowlist(doctype, stage = "open_and_fill_basic") {
+						const dt = String(doctype || "").trim().toLowerCase();
+						const step = String(stage || "open_and_fill_basic").trim().toLowerCase();
+						if (dt !== "user" || step !== "open_and_fill_basic") return null;
+						return new Set([
+							"email",
+							"first_name",
+							"middle_name",
+							"last_name",
+							"username",
+							"language",
+							"time_zone",
+							"send_welcome_email",
+							"enabled",
+						]);
+					}
+
+					isFieldAllowedForTutorialStage(doctype, stage, fieldname) {
+						const key = String(fieldname || "").trim().toLowerCase();
+						if (!key) return false;
+						const allowlist = this.getTutorialFieldAllowlist(doctype, stage);
+						if (!allowlist) return true;
+						return allowlist.has(key);
+					}
+
+					collectPlannerFieldCandidates(doctype, stage = "open_and_fill_basic") {
 						const out = [];
 						const frm = window.cur_frm;
 					const lower = String(doctype || "").trim().toLowerCase();
@@ -82,11 +107,12 @@
 				const metaFields = Array.isArray(frm.meta?.fields) ? frm.meta.fields : [];
 				for (const df of metaFields) {
 					if (!df || !df.fieldname) continue;
-					const fieldname = String(df.fieldname || "").trim();
-					if (!fieldname) continue;
-					const fieldtype = String(df.fieldtype || "Data").trim() || "Data";
-					if (
-						[
+						const fieldname = String(df.fieldname || "").trim();
+						if (!fieldname) continue;
+						if (!this.isFieldAllowedForTutorialStage(doctype, stage, fieldname)) continue;
+						const fieldtype = String(df.fieldtype || "Data").trim() || "Data";
+						if (
+							[
 							"Section Break",
 							"Column Break",
 							"Tab Break",
@@ -327,7 +353,7 @@
 					buildMergedFieldPlans(doctype, stage, plannedRows = [], fallbackPlans = []) {
 						const merged = [];
 						const seen = new Set();
-					const append = (row, source, opts = {}) => {
+						const append = (row, source, opts = {}) => {
 						if (!row || typeof row !== "object") return;
 						const fieldname = String(row.fieldname || "").trim();
 						if (!fieldname || seen.has(fieldname)) return;
@@ -336,6 +362,7 @@
 						if (Boolean(df.read_only) || Boolean(df.hidden)) return;
 						const label = String(row.label || df.label || fieldname).trim();
 						const force = Boolean(opts?.force);
+						if (!force && !this.isFieldAllowedForTutorialStage(doctype, stage, fieldname)) return;
 						if (!force && this.isTutorialNoiseField(doctype, df, fieldname, label)) return;
 						if (!force && source === "ai" && String(df?.fieldtype || "").trim() === "Link" && !Boolean(df?.reqd)) {
 							return;
@@ -464,7 +491,7 @@
 				}
 
 				async requestAIFieldPlan(doctype, stage) {
-					const fields = this.collectPlannerFieldCandidates(doctype);
+					const fields = this.collectPlannerFieldCandidates(doctype, stage);
 					if (!fields.length) return { plan: [], source: "none" };
 					const stockEntryTypePreference =
 						String(doctype || "").trim().toLowerCase() === "stock entry"
