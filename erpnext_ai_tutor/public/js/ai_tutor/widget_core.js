@@ -1709,6 +1709,61 @@
 			this.handleEvent({ severity, title: "", message: stripHtml(message), source: "alert" });
 		}
 
+		isNoRolesSpecifiedEvent(ev) {
+			if (!ev || String(ev?.source || "").trim().toLowerCase() !== "msgprint") return false;
+			const title = stripHtml(ev?.title || "").replace(/\s+/g, " ").trim().toLowerCase();
+			const message = stripHtml(ev?.message || "").replace(/\s+/g, " ").trim().toLowerCase();
+			const hasNoRolesTitle = title.includes("no roles specified");
+			const hasNoRolesText = message.includes("no roles enabled") || message.includes("has no roles");
+			return hasNoRolesTitle || hasNoRolesText;
+		}
+
+		closeNoRolesSpecifiedDialog() {
+			const selectors = [
+				".msgprint-dialog.modal.show .modal-header .btn-close",
+				".msgprint-dialog.show .modal-header .btn-close",
+				".msgprint-dialog.modal.show [data-dismiss='modal']",
+				".msgprint-dialog.show [data-dismiss='modal']",
+				".msgprint-dialog.modal.show .modal-header .close",
+				".msgprint-dialog.show .modal-header .close",
+			];
+			for (const sel of selectors) {
+				const btn = document.querySelector(sel);
+				if (btn && typeof btn.click === "function") {
+					btn.click();
+					return true;
+				}
+			}
+			try {
+				const dialog = frappe?.msg_dialog;
+				if (dialog && typeof dialog.hide === "function") {
+					dialog.hide();
+					return true;
+				}
+			} catch {
+				// ignore
+			}
+			return false;
+		}
+
+		async handleNoRolesSpecifiedEvent(ev) {
+			if (!this.isNoRolesSpecifiedEvent(ev)) return false;
+			const now = Date.now();
+			const lastAt = Number(this._lastNoRolesHandledAt || 0);
+			const isDuplicate = lastAt && now - lastAt < 6000;
+			this._lastNoRolesHandledAt = now;
+			this.closeNoRolesSpecifiedDialog();
+			if (!isDuplicate) {
+				this.append(
+					"assistant",
+					"Havotir olmang, user saqlandi. Hozircha role berilmagan, keyinroq role qo'shishni birga qilamiz.",
+					{ route_key: this.routeKey || this.getRouteKey() }
+				);
+			}
+			this.open();
+			return true;
+		}
+
 		fingerprintEvent(ev) {
 			const severity = String(ev?.severity || "").trim().toLowerCase();
 			const title = stripHtml(ev?.title || "").replace(/\s+/g, " ").trim().slice(0, 140);
@@ -1745,6 +1800,7 @@
 				return;
 			}
 			this.lastEvent = { ...ev, at: Date.now() };
+			if (await this.handleNoRolesSpecifiedEvent(ev)) return;
 			const autoOpen =
 				(ev.severity === "error" && this.config?.auto_open_on_error) ||
 				(ev.severity === "warning" && this.config?.auto_open_on_warning);
