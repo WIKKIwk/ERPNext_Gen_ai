@@ -40,16 +40,16 @@ def _start_tutorial_reply(lang: str, doctype: str) -> str:
 	return _msg(
 		lang,
 		uz=(
-			f"Zo'r, endi **{doctype}** bo'yicha amaliy ko'rsataman: ro'yxatni ochamiz, `Add/New` ni bosamiz "
-			"va asosiy maydonlarni demo tarzda to'ldiramiz. Xavfsizlik uchun `Save/Submit` ni avtomatik bosmayman."
+			f"Zo'r, endi **{doctype}** bo'yicha amaliy yo'lni bosqichma-bosqich ko'rsataman. "
+			"Jarayon davomida kerakli joylarni amalda ochib, asosiy qadamlarni ko'rsatib boraman."
 		),
 		ru=(
-			f"Отлично, сейчас покажу практический сценарий для **{doctype}**: откроем список, нажмём `Add/New` "
-			"и заполним базовые поля в демо-режиме. Из соображений безопасности `Save/Submit` автоматически не нажимаю."
+			f"Отлично, сейчас покажу практический путь для **{doctype}** шаг за шагом. "
+			"По ходу открою нужные места в интерфейсе и покажу основные действия."
 		),
 		en=(
-			f"Great, I will walk you through **{doctype}**: open the list, click `Add/New`, and fill key fields in demo mode. "
-			"For safety, I will not click `Save/Submit` automatically."
+			f"Great, I will walk you through **{doctype}** step by step. "
+			"I will open the relevant places in the interface and show the key actions as we go."
 		),
 	)
 
@@ -92,10 +92,6 @@ def _manage_roles_reply(lang: str, doctype: str = "User") -> str:
 		uz=(
 			f"Tushundim. Endi **{doctype}** bo'limi orqali role/permission sozlash yo'lini amalda ko'rsataman."
 		),
-		ru=(
-			f"Понял. Сейчас покажу практический путь настройки ролей/прав через раздел **{doctype}**."
-		),
-		en=(
-			f"Understood. I will show the practical role/permission setup path through **{doctype}**."
-		),
+		ru=(f"Понял. Сейчас покажу практический путь настройки ролей/прав через раздел **{doctype}**."),
+		en=(f"Understood. I will show the practical role/permission setup path through **{doctype}**."),
 	)
