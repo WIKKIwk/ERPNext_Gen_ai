@@ -5,6 +5,7 @@
 
 	const METHOD_GET_CONFIG = "erpnext_ai_tutor.api.get_tutor_config";
 	const METHOD_CHAT = "erpnext_ai_tutor.api.chat";
+	const METHOD_START_GUIDE_FROM_OFFER = "erpnext_ai_tutor.api.start_guide_from_offer";
 
 	const STORAGE_VERSION = 1;
 	const STORAGE_KEY_PREFIX = "erpnext_ai_tutor:";
@@ -42,7 +43,8 @@
 
 	function sanitize(value, depth = 0, maxDepth = 6) {
 		if (depth > maxDepth) return "[truncated]";
-		if (Array.isArray(value)) return value.slice(0, 200).map((v) => sanitize(v, depth + 1, maxDepth));
+		if (Array.isArray(value))
+			return value.slice(0, 200).map((v) => sanitize(v, depth + 1, maxDepth));
 		if (value && typeof value === "object") {
 			const out = {};
 			for (const [k, v] of Object.entries(value)) {
@@ -65,7 +67,9 @@
 	}
 
 	function guessSeverity(indicator) {
-		const s = String(indicator || "").toLowerCase().trim();
+		const s = String(indicator || "")
+			.toLowerCase()
+			.trim();
 		if (!s) return null;
 		if (s === "red") return "error";
 		if (s === "orange" || s === "yellow") return "warning";
@@ -94,7 +98,9 @@
 	}
 
 	function clip(text, max = 60) {
-		const s = String(text ?? "").replace(/\s+/g, " ").trim();
+		const s = String(text ?? "")
+			.replace(/\s+/g, " ")
+			.trim();
 		if (!s) return "";
 		if (s.length <= max) return s;
 		return s.slice(0, max - 1) + "…";
@@ -215,13 +221,18 @@
 				(window.cur_page && window.cur_page.page) ||
 				null;
 			const actionsRoot =
-				(currentPage && currentPage.querySelector && currentPage.querySelector(".page-actions")) ||
+				(currentPage &&
+					currentPage.querySelector &&
+					currentPage.querySelector(".page-actions")) ||
 				document.querySelector(".page-head .page-actions") ||
 				document.querySelector(".page-actions") ||
 				null;
 			if (!actionsRoot) return null;
 
-			const cleanText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+			const cleanText = (value) =>
+				String(value || "")
+					.replace(/\s+/g, " ")
+					.trim();
 			const getLabel = (el) => {
 				if (!el || typeof el.getAttribute !== "function") return "";
 				const attr =
@@ -315,7 +326,11 @@
 						val === undefined ||
 						val === "" ||
 						(Array.isArray(val) && val.length === 0);
-					if (empty) requiredMissing.push({ fieldname: df.fieldname, label: df.label || df.fieldname });
+					if (empty)
+						requiredMissing.push({
+							fieldname: df.fieldname,
+							label: df.label || df.fieldname,
+						});
 				}
 			}
 			if (requiredMissing.length) ctx.missing_required = requiredMissing.slice(0, 30);
@@ -342,7 +357,11 @@
 		const routeDoctypeSlug = toSlug(route?.[1] || "");
 		const locFirstSlug = toSlug(loc.route?.[0] || "");
 		const looksStaleFormRoute =
-			routeHead === "form" && Boolean(currentPath.startsWith("/app")) && Boolean(locFirstSlug) && Boolean(routeDoctypeSlug) && routeDoctypeSlug !== locFirstSlug;
+			routeHead === "form" &&
+			Boolean(currentPath.startsWith("/app")) &&
+			Boolean(locFirstSlug) &&
+			Boolean(routeDoctypeSlug) &&
+			routeDoctypeSlug !== locFirstSlug;
 		if (looksStaleFormRoute) {
 			route = Array.isArray(loc.route) ? loc.route : [];
 			route_str = locRouteStr;
@@ -380,6 +399,7 @@
 	ns.utils = {
 		METHOD_GET_CONFIG,
 		METHOD_CHAT,
+		METHOD_START_GUIDE_FROM_OFFER,
 		STORAGE_VERSION,
 		STORAGE_KEY_PREFIX,
 		MAX_CONVERSATIONS,

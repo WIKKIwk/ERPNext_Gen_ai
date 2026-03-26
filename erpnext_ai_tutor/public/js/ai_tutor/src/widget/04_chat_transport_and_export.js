@@ -9,19 +9,25 @@
 			});
 		}
 
-		appendGuideActionIfNeeded(wrap, guide) {
+		appendGuideActionIfNeeded(wrap, guide, guideOffer) {
 			if (!wrap) return;
 			const normalizedGuide = this.normalizeGuidePayload(guide);
-			if (!normalizedGuide || !this.isGuidedCursorEnabled()) return;
+			const normalizedGuideOffer = this.normalizeGuideOfferPayload(guideOffer);
+			if (!normalizedGuide && !normalizedGuideOffer) return;
+			if (!this.isGuidedCursorEnabled()) return;
 			if (wrap.dataset.guideCompleted === "1") return;
-			if (this.isGuideTargetActive(normalizedGuide)) {
+			if (normalizedGuide && this.isGuideTargetActive(normalizedGuide)) {
 				wrap.dataset.guideCompleted = "1";
 				this.markGuideActionCompleted(this.normalizeMessageTs(wrap.dataset.messageTs), normalizedGuide);
 				return;
 			}
 			const bubble = wrap.querySelector(".erpnext-ai-tutor-bubble");
 			if (!bubble) return;
-			if (!this.isTutorialGuide(normalizedGuide) && this.isCurrentRouteMentionedInBubble(bubble)) {
+			if (
+				normalizedGuide &&
+				!this.isTutorialGuide(normalizedGuide) &&
+				this.isCurrentRouteMentionedInBubble(bubble)
+			) {
 				wrap.dataset.guideCompleted = "1";
 				this.markGuideActionCompleted(this.normalizeMessageTs(wrap.dataset.messageTs), normalizedGuide);
 				return;
@@ -35,8 +41,15 @@
 			guideBtn.className = "erpnext-ai-tutor-guide-btn";
 			guideBtn.textContent = "Ko'rsatib ber";
 			guideBtn.addEventListener("click", (event) => {
-				this.runGuidedCursor(normalizedGuide, {
-					auto: false,
+				if (normalizedGuide) {
+					this.runGuidedCursor(normalizedGuide, {
+						auto: false,
+						triggerEl: event?.currentTarget || guideBtn,
+						messageTs,
+					});
+					return;
+				}
+				this.startGuideFromOffer(normalizedGuideOffer, {
 					triggerEl: event?.currentTarget || guideBtn,
 					messageTs,
 				});
@@ -96,7 +109,7 @@
 
 			if (!this.shouldAnimateAssistantReply(finalText)) {
 				this.renderAssistantRichText(textEl, finalText, guide);
-				this.appendGuideActionIfNeeded(wrap, guide);
+				this.appendGuideActionIfNeeded(wrap, guide, guideOffer);
 				this.$body.scrollTop = this.$body.scrollHeight;
 				return wrap;
 			}
@@ -109,7 +122,7 @@
 			}
 			this.renderAssistantRichText(textEl, finalText, guide);
 			textEl.classList.remove("is-typewriting");
-			this.appendGuideActionIfNeeded(wrap, guide);
+			this.appendGuideActionIfNeeded(wrap, guide, guideOffer);
 			this.$body.scrollTop = this.$body.scrollHeight;
 			return wrap;
 		}
@@ -291,6 +304,80 @@
 				}
 			}
 			throw lastErr || new Error("CHAT_CALL_FAILED");
+		}
+
+		async callStartGuideWithRetry(payload) {
+			let lastErr = null;
+			for (let attempt = 0; attempt < 2; attempt++) {
+				try {
+					return await frappe.call(METHOD_START_GUIDE_FROM_OFFER, payload);
+				} catch (err) {
+					lastErr = err;
+					if (attempt === 0 && this.isTransientCallError(err)) {
+						await new Promise((resolve) => setTimeout(resolve, 420));
+						continue;
+					}
+					throw err;
+				}
+			}
+			throw lastErr || new Error("GUIDE_START_CALL_FAILED");
+		}
+
+		async startGuideFromOffer(guideOffer, opts = {}) {
+			const normalizedOffer = this.normalizeGuideOfferPayload(guideOffer);
+			if (!normalizedOffer?.show) return;
+			const triggerEl = opts?.triggerEl || null;
+			const messageTs = this.normalizeMessageTs(opts?.messageTs);
+			this.setGuideButtonBusy(triggerEl, true);
+			try {
+				const advanced = this.isAdvancedMode();
+				const ctx = getContextSnapshot(this.config, advanced ? this.lastEvent : null);
+				if (advanced && this.activeField) ctx.active_field = sanitize(this.activeField);
+				const r = await this.callStartGuideWithRetry({
+					offer: normalizedOffer,
+					context: ctx,
+				});
+				const payload =
+					r && typeof r?.message === "object" && r.message
+						? r.message
+						: r && typeof r === "object"
+							? r
+							: null;
+				if (!payload || payload.ok === false) {
+					const replyText = String(payload?.reply || "").trim() || "Guide start qilib bo'lmadi.";
+					this.append("assistant", replyText, {
+						route_key: this.routeKey || this.getRouteKey(),
+					});
+					return;
+				}
+
+				this.applyTutorStateFromResponse(payload || r?.message);
+				const guide = this.normalizeGuidePayload(payload?.guide || payload?.data?.guide || r?.guide || null);
+				const replyText = String(payload?.reply || payload?.message || r?.message || "").trim();
+				if (replyText) {
+					await this.appendAssistantWithTypingEffect(replyText, {
+						route_key: this.routeKey || this.getRouteKey(),
+					});
+				}
+				if (guide) {
+					this.markGuideOfferActionCompleted(messageTs);
+					await this.runGuidedCursor(guide, {
+						auto: false,
+						triggerEl,
+						messageTs,
+					});
+					return;
+				}
+				if (triggerEl) this.completeGuideButton(triggerEl);
+			} catch (e) {
+				const errorDetail = this.extractCallErrorText(e);
+				this.append(
+					"assistant",
+					errorDetail ? `Guide start qilib bo'lmadi (${errorDetail}).` : "Guide start qilib bo'lmadi.",
+					{ route_key: this.routeKey || this.getRouteKey() }
+				);
+				this.setGuideButtonBusy(triggerEl, false);
+			}
 		}
 
 		async ask(text, opts = { source: "user" }) {

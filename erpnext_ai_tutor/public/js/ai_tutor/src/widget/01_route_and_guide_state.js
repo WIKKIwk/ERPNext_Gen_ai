@@ -239,6 +239,32 @@
 			}
 		}
 
+		markGuideOfferActionCompleted(messageTsRaw) {
+			const messageTs = this.normalizeMessageTs(messageTsRaw);
+			if (!messageTs) return;
+			const markIn = (messages) => {
+				if (!Array.isArray(messages)) return false;
+				let changed = false;
+				for (const msg of messages) {
+					if (!msg || msg.role !== "assistant") continue;
+					if (this.normalizeMessageTs(msg.ts) !== messageTs) continue;
+					if (!msg.guide_completed) {
+						msg.guide_completed = true;
+						changed = true;
+					}
+				}
+				return changed;
+			};
+
+			const conv = this.getActiveConversation();
+			const changedConv = markIn(conv?.messages);
+			const changedHistory = markIn(this.history);
+			if (changedConv || changedHistory) {
+				if (conv) conv.updated_at = Date.now();
+				this.saveChatState();
+			}
+		}
+
 		completeGuideButton(btn) {
 			if (!btn) return;
 			const actions = btn.closest(".erpnext-ai-tutor-message-actions");

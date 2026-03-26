@@ -307,6 +307,7 @@
 			wrap.className = `erpnext-ai-tutor-message ${role}`;
 			wrap.setAttribute("role", "listitem");
 			const guide = this.normalizeGuidePayload(opts?.guide);
+			const guideOffer = this.normalizeGuideOfferPayload(opts?.guide_offer);
 			const initialGuideCompleted = Boolean(opts?.guide_completed) || this.isGuideTargetActive(guide);
 			const messageTs = this.normalizeMessageTs(ts);
 			if (messageTs) wrap.dataset.messageTs = String(messageTs);
@@ -362,6 +363,26 @@
 				guideBtn.addEventListener("click", (event) => {
 					this.runGuidedCursor(guide, {
 						auto: false,
+						triggerEl: event?.currentTarget || guideBtn,
+						messageTs,
+					});
+				});
+				actions.appendChild(guideBtn);
+				bubble.appendChild(actions);
+			} else if (
+				role === "assistant" &&
+				guideOffer?.show &&
+				this.isGuidedCursorEnabled() &&
+				!finalGuideCompleted
+			) {
+				const actions = document.createElement("div");
+				actions.className = "erpnext-ai-tutor-message-actions";
+				const guideBtn = document.createElement("button");
+				guideBtn.type = "button";
+				guideBtn.className = "erpnext-ai-tutor-guide-btn";
+				guideBtn.textContent = "Ko'rsatib ber";
+				guideBtn.addEventListener("click", (event) => {
+					this.startGuideFromOffer(guideOffer, {
 						triggerEl: event?.currentTarget || guideBtn,
 						messageTs,
 					});
