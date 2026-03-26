@@ -5,7 +5,6 @@ import types
 import unittest
 from unittest.mock import patch
 
-
 if "frappe" not in sys.modules:
 	frappe_stub = types.ModuleType("frappe")
 
@@ -34,6 +33,7 @@ if "erpnext_ai_tutor.tutor.training_resolution" not in sys.modules:
 	training_resolution_stub._resolve_doctype_target = _resolve_doctype_target_stub
 	sys.modules["erpnext_ai_tutor.tutor.training_resolution"] = training_resolution_stub
 
+from erpnext_ai_tutor.tutor.training import maybe_handle_training_flow  # noqa: E402
 from erpnext_ai_tutor.tutor.training_handlers import (  # noqa: E402
 	_handle_active_continue,
 	_handle_create_or_intent,
@@ -79,13 +79,13 @@ class TrainingFlowLogicTests(unittest.TestCase):
 				state_action="create_record",
 				state_doctype="Item",
 				context_doctype="",
-					continue_requested=True,
-					show_save_requested=False,
-					dependency_create_requested=False,
-					create_requested=False,
-					explicit_doctype="",
-					pick_stock_entry_type=lambda _doctype: "",
-				)
+				continue_requested=True,
+				show_save_requested=False,
+				dependency_create_requested=False,
+				create_requested=False,
+				explicit_doctype="",
+				pick_stock_entry_type=lambda _doctype: "",
+			)
 		self.assertIsInstance(result, dict)
 		self.assertEqual(result.get("tutor_state", {}).get("stage"), "fill_more")
 		self.assertEqual(result.get("guide", {}).get("tutorial", {}).get("stage"), "fill_more")
@@ -113,20 +113,27 @@ class TrainingFlowLogicTests(unittest.TestCase):
 		self.assertTrue(result.get("tutor_state", {}).get("allow_dependency_creation"))
 
 	def test_runtime_prefers_context_target_when_state_context_mismatch(self):
-		context_target = {"doctype": "Customer", "route": "/app/customer", "menu_path": ["Selling", "Customer"]}
+		context_target = {
+			"doctype": "Customer",
+			"route": "/app/customer",
+			"menu_path": ["Selling", "Customer"],
+		}
 
 		def _target_from_doctype_side_effect(doctype: str):
 			if doctype == "Customer":
 				return context_target
 			return {}
 
-		with patch(
-			"erpnext_ai_tutor.tutor.training_runtime._target_from_doctype",
-			side_effect=_target_from_doctype_side_effect,
-		), patch(
-			"erpnext_ai_tutor.tutor.training_runtime._resolve_doctype_target",
-			return_value={"doctype": "Item", "route": "/app/item", "menu_path": ["Stock", "Item"]},
-		) as resolve_fallback:
+		with (
+			patch(
+				"erpnext_ai_tutor.tutor.training_runtime._target_from_doctype",
+				side_effect=_target_from_doctype_side_effect,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.training_runtime._resolve_doctype_target",
+				return_value={"doctype": "Item", "route": "/app/item", "menu_path": ["Stock", "Item"]},
+			) as resolve_fallback,
+		):
 			result = _resolve_training_target(
 				explicit_target={},
 				context_doctype="Customer",
@@ -154,17 +161,22 @@ class TrainingFlowLogicTests(unittest.TestCase):
 				return context_target
 			return {}
 
-		def _resolve_doctype_target_side_effect(user_message: str, ctx, fallback_doctype="", allow_context_fallback=True):  # noqa: ANN001, ANN201
+		def _resolve_doctype_target_side_effect(
+			user_message: str, ctx, fallback_doctype="", allow_context_fallback=True
+		):  # noqa: ANN001, ANN201
 			if str(user_message or "").strip() == "BOM":
 				return intent_target
 			return {}
 
-		with patch(
-			"erpnext_ai_tutor.tutor.training_runtime._target_from_doctype",
-			side_effect=_target_from_doctype_side_effect,
-		), patch(
-			"erpnext_ai_tutor.tutor.training_runtime._resolve_doctype_target",
-			side_effect=_resolve_doctype_target_side_effect,
+		with (
+			patch(
+				"erpnext_ai_tutor.tutor.training_runtime._target_from_doctype",
+				side_effect=_target_from_doctype_side_effect,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.training_runtime._resolve_doctype_target",
+				side_effect=_resolve_doctype_target_side_effect,
+			),
 		):
 			result = _resolve_training_target(
 				explicit_target={},
@@ -196,7 +208,11 @@ class TrainingFlowLogicTests(unittest.TestCase):
 			lang="uz",
 			state_doctype="",
 			create_requested=False,
-			resolve_training_target=lambda **kwargs: {"doctype": "User", "route": "/app/user", "menu_path": ["Users", "User"]},
+			resolve_training_target=lambda **kwargs: {
+				"doctype": "User",
+				"route": "/app/user",
+				"menu_path": ["Users", "User"],
+			},
 			pick_stock_entry_type=lambda _doctype: "",
 		)
 		self.assertIsNone(result)
@@ -224,6 +240,45 @@ class TrainingFlowLogicTests(unittest.TestCase):
 		)
 		self.assertEqual(result.get("guide", {}).get("target_label"), "User")
 		self.assertEqual(result.get("guide", {}).get("route"), "/app/user")
+
+	def test_new_create_request_does_not_auto_start_guided_session_from_plain_chat(self):
+		training_ctx = {
+			"text_rules": "menga item qo'shishni o'rgat",
+			"pending": "",
+			"state_doctype": "",
+			"state_action": "",
+			"state_stock_type": "",
+			"context_doctype": "",
+			"intent_doctype": "Item",
+			"create_requested": True,
+			"continue_requested": False,
+			"show_save_requested": False,
+			"manage_roles_requested": False,
+			"dependency_create_requested": False,
+			"explicit_target": {},
+			"explicit_doctype": "",
+			"practical_tutorial_requested": True,
+			"requested_stock_type": "",
+			"field_overrides": {},
+		}
+		with (
+			patch(
+				"erpnext_ai_tutor.tutor.training._build_training_context",
+				return_value=training_ctx,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.training._handle_create_or_intent",
+				return_value={"ok": True, "reply": "should not happen"},
+			) as create_handler,
+		):
+			result = maybe_handle_training_flow(
+				"menga item qo'shishni o'rgat",
+				{},
+				lang="uz",
+				advanced_mode=True,
+			)
+		self.assertIsNone(result)
+		create_handler.assert_not_called()
 
 
 if __name__ == "__main__":

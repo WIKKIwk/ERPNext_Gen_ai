@@ -117,15 +117,19 @@ def maybe_handle_training_flow(
 	if continue_flow_reply is not None:
 		return continue_flow_reply
 
-	create_or_intent_reply = _handle_create_or_intent(
-		lang=lang,
-		state_doctype=state_doctype,
-		create_requested=create_requested,
-		resolve_training_target=resolve_training_target,
-		pick_stock_entry_type=pick_stock_entry_type,
-		field_overrides=field_overrides,
-	)
-	if create_or_intent_reply is not None:
-		return create_or_intent_reply
+	# New guided sessions should not auto-start from plain chat.
+	# Explain-first responses will later attach an optional guide affordance,
+	# and guided execution will begin only from an explicit guide-start action.
+	if state_action == "create_record" or pending:
+		create_or_intent_reply = _handle_create_or_intent(
+			lang=lang,
+			state_doctype=state_doctype,
+			create_requested=create_requested,
+			resolve_training_target=resolve_training_target,
+			pick_stock_entry_type=pick_stock_entry_type,
+			field_overrides=field_overrides,
+		)
+		if create_or_intent_reply is not None:
+			return create_or_intent_reply
 
 	return None
