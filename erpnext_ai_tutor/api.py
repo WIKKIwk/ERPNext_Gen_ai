@@ -1,15 +1,26 @@
 from __future__ import annotations
 
-import re
 import json
-from typing import Any, Dict, List
+import re
 from pathlib import Path
+from typing import Any, Dict, List
 
 import frappe
 
 from erpnext_ai_tutor.erpnext_ai_tutor.doctype.ai_tutor_settings.ai_tutor_settings import (
 	AITutorSettings,
 	truncate_json,
+)
+from erpnext_ai_tutor.tutor.chat_helpers import (
+	_align_form_context_with_route,
+	_extract_retry_after_seconds,
+	_get_current_user_role_context,
+	_global_language_system_message,
+	_llm_fallback_reply_key,
+	_location_llm_reply,
+	_role_aware_system_message,
+	_tone_system_message,
+	_welcome_session_marker,
 )
 from erpnext_ai_tutor.tutor.common import parse_json_arg, sanitize
 from erpnext_ai_tutor.tutor.context import (
@@ -20,6 +31,7 @@ from erpnext_ai_tutor.tutor.context import (
 	shrink_doc,
 	which_field_reply,
 )
+from erpnext_ai_tutor.tutor.guide_offer import build_guide_offer
 from erpnext_ai_tutor.tutor.intents import (
 	WHAT_NEXT_RE,
 	WHERE_AM_I_RE,
@@ -38,30 +50,18 @@ from erpnext_ai_tutor.tutor.language import (
 	normalize_lang,
 	reply_text,
 )
+from erpnext_ai_tutor.tutor.llm import call_llm, get_ai_provider_config
 from erpnext_ai_tutor.tutor.navigation import (
 	build_navigation_plan,
 	build_navigation_reply_from_plan,
 )
-from erpnext_ai_tutor.tutor.training import maybe_handle_training_flow
-from erpnext_ai_tutor.tutor.llm import call_llm, get_ai_provider_config
 from erpnext_ai_tutor.tutor.planner import plan_tutorial_fields as build_tutorial_field_plan
+from erpnext_ai_tutor.tutor.training import maybe_handle_training_flow
 from erpnext_ai_tutor.tutor.ui import (
 	enforce_primary_action_label,
 	ui_guidance_system_message,
 	ui_snapshot_system_message,
 )
-from erpnext_ai_tutor.tutor.chat_helpers import (
-	_align_form_context_with_route,
-	_extract_retry_after_seconds,
-	_get_current_user_role_context,
-	_global_language_system_message,
-	_llm_fallback_reply_key,
-	_location_llm_reply,
-	_role_aware_system_message,
-	_tone_system_message,
-	_welcome_session_marker,
-)
-
 
 GUIDE_ROUTE_OVERRIDES = {
 	"/app/doctype": {
@@ -439,7 +439,10 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		return {"ok": False, "reply": reply_text("disabled", lang=lang, emoji_style=emoji_style)}
 
 	if not user_message:
-		return {"ok": False, "reply": reply_text("empty_message", lang=fallback_lang, emoji_style=emoji_style)}
+		return {
+			"ok": False,
+			"reply": reply_text("empty_message", lang=fallback_lang, emoji_style=emoji_style),
+		}
 
 	raw_ctx = parse_json_arg(context or {})
 	if not isinstance(raw_ctx, dict):
@@ -465,7 +468,10 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 				lang = raw_ui_lang
 
 	if is_greeting_only(user_message):
-		payload: Dict[str, Any] = {"ok": True, "reply": reply_text("greeting", lang=lang, emoji_style=emoji_style)}
+		payload: Dict[str, Any] = {
+			"ok": True,
+			"reply": reply_text("greeting", lang=lang, emoji_style=emoji_style),
+		}
 		pending_state = ctx.get("tutor_state") if isinstance(ctx, dict) else None
 		if isinstance(pending_state, dict) and str(pending_state.get("pending") or "").strip():
 			payload["tutor_state"] = None
@@ -541,9 +547,16 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 
 	messages: List[dict] = [{"role": "system", "content": cfg.system_prompt.strip()}]
 	messages.append({"role": "system", "content": language_policy_system_message(fallback=fallback_lang)})
-	messages.append({"role": "system", "content": language_for_response_system_message(lang=lang, fallback=fallback_lang)})
+	messages.append(
+		{"role": "system", "content": language_for_response_system_message(lang=lang, fallback=fallback_lang)}
+	)
 	messages.append({"role": "system", "content": _global_language_system_message(lang=lang)})
-	messages.append({"role": "system", "content": _tone_system_message(advanced_mode=advanced_mode, emoji_style=emoji_style)})
+	messages.append(
+		{
+			"role": "system",
+			"content": _tone_system_message(advanced_mode=advanced_mode, emoji_style=emoji_style),
+		}
+	)
 	messages.append({"role": "system", "content": _role_aware_system_message(user_ctx)})
 
 	if advanced_mode:
@@ -696,7 +709,9 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		if advanced_mode and pre_nav_candidate and nav_plan:
 			guide = _guide_from_nav_plan(nav_plan)
 			if guide:
-				deterministic_nav_reply = nav_hint or build_navigation_reply_from_plan(nav_plan, lang=lang, strict=False)
+				deterministic_nav_reply = nav_hint or build_navigation_reply_from_plan(
+					nav_plan, lang=lang, strict=False
+				)
 				if deterministic_nav_reply:
 					limit_note = {
 						"uz": "AI servisi hozir limitga tushgan bo'lsa ham, yo'lni lokal xaritadan ko'rsatdim.",
@@ -759,7 +774,11 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 		if nav_plan:
 			guide = _guide_from_nav_plan(nav_plan)
 
-	result_payload = {"ok": True, "reply": reply or "", "guide": guide}
+	guide_offer: Dict[str, Any] | None = None
+	if advanced_mode and not guide and not troubleshoot and not is_auto:
+		guide_offer = build_guide_offer(user_message, ctx)
+
+	result_payload = {"ok": True, "reply": reply or "", "guide": guide, "guide_offer": guide_offer}
 	_log_chat_diagnostic(
 		phase="llm_flow",
 		user_message=user_message,
