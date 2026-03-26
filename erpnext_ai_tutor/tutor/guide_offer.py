@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict
 
 from erpnext_ai_tutor.tutor.training_intent import _infer_training_intent_with_ai
@@ -11,6 +12,19 @@ GUIDE_OFFER_ACTIONS = {"create_record", "manage_roles"}
 GUIDE_OFFER_MIN_CONFIDENCE = 0.55
 GUIDE_OFFER_CONTEXT_MATCH_MIN_CONFIDENCE = 0.45
 GUIDE_OFFER_NO_CONTEXT_HIGH_CONFIDENCE = 0.65
+READ_ONLY_PREFERENCE_RE = re.compile(
+	r"(?:"
+	r"\bfaqat\s+(?:tushuntir|yoz(?:ib)?\s+ber|izohla)\b|"
+	r"\bcursor(?:siz)?\b|"
+	r"\bko['’]?rsatma\s+kerak\s+emas\b|"
+	r"\bko['’]?rsatib\s+berma\b|"
+	r"\bno\s+cursor\b|"
+	r"\bjust\s+explain\b|"
+	r"\bdon['’]?t\s+show\b|"
+	r"\bwithout\s+cursor\b"
+	r")",
+	re.IGNORECASE,
+)
 
 
 def _normalize_confidence(value: Any) -> float:
@@ -28,10 +42,16 @@ def _context_match(target_label: str, ctx: Dict[str, Any]) -> bool:
 	return context_doctype.lower() == target.lower()
 
 
+def _prefers_read_only(text: str) -> bool:
+	return bool(READ_ONLY_PREFERENCE_RE.search(str(text or "").strip()))
+
+
 def build_guide_offer(user_message: str, ctx: Dict[str, Any]) -> Dict[str, Any] | None:
 	"""Return non-executable guide affordance metadata for normal chat replies."""
 	text = str(user_message or "").strip()
 	if not text:
+		return None
+	if _prefers_read_only(text):
 		return None
 
 	ctx = ctx if isinstance(ctx, dict) else {}

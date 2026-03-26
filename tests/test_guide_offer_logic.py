@@ -163,6 +163,15 @@ class GuideOfferLogicTests(unittest.TestCase):
 			result = build_guide_offer("qanday davom etaman", {})
 		self.assertIsNone(result)
 
+	def test_read_only_preference_suppresses_guide_offer(self):
+		with patch(
+			"erpnext_ai_tutor.tutor.guide_offer._infer_training_intent_with_ai",
+			return_value={"action": "create_record", "doctype": "Item", "confidence": 0.95},
+		) as infer_intent:
+			result = build_guide_offer("faqat tushuntirib ber, cursor siz", {})
+		self.assertIsNone(result)
+		infer_intent.assert_not_called()
+
 
 if __name__ == "__main__":
 	unittest.main()
