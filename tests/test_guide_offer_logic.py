@@ -110,6 +110,59 @@ class GuideOfferLogicTests(unittest.TestCase):
 			result = build_guide_offer("menga item qo'shishni o'rgat", {})
 		self.assertIsNone(result)
 
+	def test_context_match_allows_lower_confidence_offer(self):
+		intent = {
+			"action": "create_record",
+			"doctype": "",
+			"confidence": 0.48,
+			"allow_dependency_creation": False,
+			"field_updates": [],
+		}
+		target = {"doctype": "Item", "route": "/app/item", "menu_path": ["Stock", "Item"]}
+		with (
+			patch(
+				"erpnext_ai_tutor.tutor.guide_offer._infer_training_intent_with_ai",
+				return_value=intent,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.guide_offer._resolve_doctype_target",
+				return_value=target,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.guide_offer._infer_doctype_from_context",
+				return_value="Item",
+			),
+		):
+			result = build_guide_offer("qanday davom etaman", {"form": {"doctype": "Item"}})
+		self.assertEqual(result.get("show"), True)
+		self.assertEqual(result.get("reason"), "semantic_intent_resolved_target_context_match")
+
+	def test_without_explicit_doctype_or_context_needs_higher_confidence(self):
+		intent = {
+			"action": "create_record",
+			"doctype": "",
+			"confidence": 0.60,
+			"allow_dependency_creation": False,
+			"field_updates": [],
+		}
+		target = {"doctype": "Item", "route": "/app/item", "menu_path": ["Stock", "Item"]}
+		with (
+			patch(
+				"erpnext_ai_tutor.tutor.guide_offer._infer_training_intent_with_ai",
+				return_value=intent,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.guide_offer._resolve_doctype_target",
+				return_value=target,
+			),
+			patch(
+				"erpnext_ai_tutor.tutor.guide_offer._infer_doctype_from_context",
+				return_value="",
+			),
+		):
+			result = build_guide_offer("qanday davom etaman", {})
+		self.assertIsNone(result)
+
 
 if __name__ == "__main__":
 	unittest.main()
