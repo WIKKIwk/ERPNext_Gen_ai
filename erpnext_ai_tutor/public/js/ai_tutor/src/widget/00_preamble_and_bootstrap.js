@@ -311,6 +311,52 @@
 			};
 		}
 
+		normalizeGuideOfferPayload(raw) {
+			if (!raw || typeof raw !== "object") return null;
+			const show = raw.show === true;
+			const targetLabel = String(raw.target_label || "").trim();
+			const route = String(raw.route || "").trim();
+			const mode = String(raw.mode || "").trim().toLowerCase();
+			const confidenceRaw = Number(raw.confidence);
+			const confidence = Number.isFinite(confidenceRaw)
+				? Math.max(0, Math.min(1, confidenceRaw))
+				: null;
+			const reason = String(raw.reason || "").trim().slice(0, 160);
+			const menuPathRaw = Array.isArray(raw.menu_path) ? raw.menu_path : [];
+			const menuPath = menuPathRaw
+				.map((x) => String(x || "").trim())
+				.filter(Boolean)
+				.slice(0, 6);
+			const allowedModes = new Set(["create_record", "navigate", "manage_roles"]);
+
+			if (!show) {
+				return {
+					show: false,
+					confidence,
+					reason,
+					target_label: targetLabel,
+					route,
+					menu_path: menuPath,
+					mode: allowedModes.has(mode) ? mode : "",
+				};
+			}
+
+			if (!targetLabel || !route.startsWith("/app/") || !allowedModes.has(mode)) {
+				return null;
+			}
+
+			const repaired = this.applyGuideRouteOverride(route, targetLabel, menuPath);
+			return {
+				show: true,
+				confidence,
+				reason,
+				target_label: repaired.target_label,
+				route,
+				menu_path: repaired.menu_path,
+				mode,
+			};
+		}
+
 		normalizeRoutePath(value) {
 			const cleaned = String(value || "").trim();
 			if (!cleaned) return "";

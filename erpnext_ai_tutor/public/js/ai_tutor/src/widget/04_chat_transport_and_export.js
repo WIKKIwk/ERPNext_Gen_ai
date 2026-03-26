@@ -50,6 +50,7 @@
 			const ts = Date.now();
 			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();
 			const guide = this.normalizeGuidePayload(opts?.guide);
+			const guideOffer = this.normalizeGuideOfferPayload(opts?.guide_offer);
 			const guideCompleted = this.isGuideTargetActive(guide);
 			const finalText = String(content ?? "");
 
@@ -58,12 +59,14 @@
 				content: finalText,
 				route_key: routeKey,
 				guide,
+				guide_offer: guideOffer,
 				guide_completed: guideCompleted,
 				ts,
 			});
 				const wrap = this.appendToDOM("assistant", "", ts, {
 					animate: true,
 					guide: null,
+					guide_offer: guideOffer,
 					guide_completed: guideCompleted,
 				});
 
@@ -76,6 +79,7 @@
 					ts,
 					route_key: routeKey,
 					guide,
+					guide_offer: guideOffer,
 					guide_completed: guideCompleted,
 				});
 				conv.updated_at = ts;
@@ -333,9 +337,16 @@
 						const guide = this.normalizeGuidePayload(
 							payload?.guide || payload?.data?.guide || r?.guide || null
 						);
+						const guideOffer = this.normalizeGuideOfferPayload(
+							payload?.guide_offer || payload?.data?.guide_offer || r?.guide_offer || null
+						);
 					this.hideTyping();
 					this.setMessageStatus(userEl, "sent");
-					await this.appendAssistantWithTypingEffect(replyText, { route_key: routeKey, guide });
+					await this.appendAssistantWithTypingEffect(replyText, {
+						route_key: routeKey,
+						guide,
+						guide_offer: guideOffer,
+					});
 			} catch (e) {
 				this.hideTyping();
 				this.setMessageStatus(userEl, "failed");

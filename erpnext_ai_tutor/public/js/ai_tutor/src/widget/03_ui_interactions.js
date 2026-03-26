@@ -572,18 +572,36 @@
 			const ts = Date.now();
 			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();
 			const guide = this.normalizeGuidePayload(opts?.guide);
+			const guideOffer = this.normalizeGuideOfferPayload(opts?.guide_offer);
 			const el = this.appendToDOM(role, content, ts, {
 				animate: true,
 				guide,
+				guide_offer: guideOffer,
 				guide_completed: this.isGuideTargetActive(guide),
 			});
 			const guideCompleted = Boolean(el?.dataset?.guideCompleted === "1");
-			this.history.push({ role, content, route_key: routeKey, guide, guide_completed: guideCompleted, ts });
+			this.history.push({
+				role,
+				content,
+				route_key: routeKey,
+				guide,
+				guide_offer: guideOffer,
+				guide_completed: guideCompleted,
+				ts,
+			});
 
 			const conv = this.getActiveConversation();
 			if (conv) {
 				if (!Array.isArray(conv.messages)) conv.messages = [];
-				conv.messages.push({ role, content, ts, route_key: routeKey, guide, guide_completed: guideCompleted });
+				conv.messages.push({
+					role,
+					content,
+					ts,
+					route_key: routeKey,
+					guide,
+					guide_offer: guideOffer,
+					guide_completed: guideCompleted,
+				});
 				conv.updated_at = ts;
 				conv.messages = conv.messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
 				this.pruneChatState();

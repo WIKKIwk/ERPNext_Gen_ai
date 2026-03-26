@@ -271,10 +271,12 @@
 			for (const m of messages) {
 				if (!m || !m.role) continue;
 				const guide = this.normalizeGuidePayload(m.guide);
+				const guideOffer = this.normalizeGuideOfferPayload(m.guide_offer);
 				const initialGuideCompleted = Boolean(m.guide_completed) || this.isGuideTargetActive(guide);
 				const wrap = this.appendToDOM(m.role, m.content, m.ts, {
 					animate: false,
 					guide,
+					guide_offer: guideOffer,
 					guide_completed: initialGuideCompleted,
 				});
 				const renderedGuideCompleted =
@@ -288,6 +290,7 @@
 					content: m.content,
 					route_key: m.route_key || "",
 					guide,
+					guide_offer: guideOffer,
 					guide_completed: renderedGuideCompleted,
 					ts: m.ts,
 				});

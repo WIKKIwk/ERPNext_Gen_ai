@@ -311,6 +311,52 @@
 			};
 		}
 
+		normalizeGuideOfferPayload(raw) {
+			if (!raw || typeof raw !== "object") return null;
+			const show = raw.show === true;
+			const targetLabel = String(raw.target_label || "").trim();
+			const route = String(raw.route || "").trim();
+			const mode = String(raw.mode || "").trim().toLowerCase();
+			const confidenceRaw = Number(raw.confidence);
+			const confidence = Number.isFinite(confidenceRaw)
+				? Math.max(0, Math.min(1, confidenceRaw))
+				: null;
+			const reason = String(raw.reason || "").trim().slice(0, 160);
+			const menuPathRaw = Array.isArray(raw.menu_path) ? raw.menu_path : [];
+			const menuPath = menuPathRaw
+				.map((x) => String(x || "").trim())
+				.filter(Boolean)
+				.slice(0, 6);
+			const allowedModes = new Set(["create_record", "navigate", "manage_roles"]);
+
+			if (!show) {
+				return {
+					show: false,
+					confidence,
+					reason,
+					target_label: targetLabel,
+					route,
+					menu_path: menuPath,
+					mode: allowedModes.has(mode) ? mode : "",
+				};
+			}
+
+			if (!targetLabel || !route.startsWith("/app/") || !allowedModes.has(mode)) {
+				return null;
+			}
+
+			const repaired = this.applyGuideRouteOverride(route, targetLabel, menuPath);
+			return {
+				show: true,
+				confidence,
+				reason,
+				target_label: repaired.target_label,
+				route,
+				menu_path: repaired.menu_path,
+				mode,
+			};
+		}
+
 		normalizeRoutePath(value) {
 			const cleaned = String(value || "").trim();
 			if (!cleaned) return "";
@@ -1338,10 +1384,12 @@
 			for (const m of messages) {
 				if (!m || !m.role) continue;
 				const guide = this.normalizeGuidePayload(m.guide);
+				const guideOffer = this.normalizeGuideOfferPayload(m.guide_offer);
 				const initialGuideCompleted = Boolean(m.guide_completed) || this.isGuideTargetActive(guide);
 				const wrap = this.appendToDOM(m.role, m.content, m.ts, {
 					animate: false,
 					guide,
+					guide_offer: guideOffer,
 					guide_completed: initialGuideCompleted,
 				});
 				const renderedGuideCompleted =
@@ -1355,6 +1403,7 @@
 					content: m.content,
 					route_key: m.route_key || "",
 					guide,
+					guide_offer: guideOffer,
 					guide_completed: renderedGuideCompleted,
 					ts: m.ts,
 				});
@@ -2091,18 +2140,36 @@
 			const ts = Date.now();
 			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();
 			const guide = this.normalizeGuidePayload(opts?.guide);
+			const guideOffer = this.normalizeGuideOfferPayload(opts?.guide_offer);
 			const el = this.appendToDOM(role, content, ts, {
 				animate: true,
 				guide,
+				guide_offer: guideOffer,
 				guide_completed: this.isGuideTargetActive(guide),
 			});
 			const guideCompleted = Boolean(el?.dataset?.guideCompleted === "1");
-			this.history.push({ role, content, route_key: routeKey, guide, guide_completed: guideCompleted, ts });
+			this.history.push({
+				role,
+				content,
+				route_key: routeKey,
+				guide,
+				guide_offer: guideOffer,
+				guide_completed: guideCompleted,
+				ts,
+			});
 
 			const conv = this.getActiveConversation();
 			if (conv) {
 				if (!Array.isArray(conv.messages)) conv.messages = [];
-				conv.messages.push({ role, content, ts, route_key: routeKey, guide, guide_completed: guideCompleted });
+				conv.messages.push({
+					role,
+					content,
+					ts,
+					route_key: routeKey,
+					guide,
+					guide_offer: guideOffer,
+					guide_completed: guideCompleted,
+				});
 				conv.updated_at = ts;
 				conv.messages = conv.messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
 				this.pruneChatState();
@@ -2239,6 +2306,7 @@
 			const ts = Date.now();
 			const routeKey = String(opts?.route_key || this.routeKey || this.getRouteKey() || "").trim();
 			const guide = this.normalizeGuidePayload(opts?.guide);
+			const guideOffer = this.normalizeGuideOfferPayload(opts?.guide_offer);
 			const guideCompleted = this.isGuideTargetActive(guide);
 			const finalText = String(content ?? "");
 
@@ -2247,12 +2315,14 @@
 				content: finalText,
 				route_key: routeKey,
 				guide,
+				guide_offer: guideOffer,
 				guide_completed: guideCompleted,
 				ts,
 			});
 				const wrap = this.appendToDOM("assistant", "", ts, {
 					animate: true,
 					guide: null,
+					guide_offer: guideOffer,
 					guide_completed: guideCompleted,
 				});
 
@@ -2265,6 +2335,7 @@
 					ts,
 					route_key: routeKey,
 					guide,
+					guide_offer: guideOffer,
 					guide_completed: guideCompleted,
 				});
 				conv.updated_at = ts;
@@ -2522,9 +2593,16 @@
 						const guide = this.normalizeGuidePayload(
 							payload?.guide || payload?.data?.guide || r?.guide || null
 						);
+						const guideOffer = this.normalizeGuideOfferPayload(
+							payload?.guide_offer || payload?.data?.guide_offer || r?.guide_offer || null
+						);
 					this.hideTyping();
 					this.setMessageStatus(userEl, "sent");
-					await this.appendAssistantWithTypingEffect(replyText, { route_key: routeKey, guide });
+					await this.appendAssistantWithTypingEffect(replyText, {
+						route_key: routeKey,
+						guide,
+						guide_offer: guideOffer,
+					});
 			} catch (e) {
 				this.hideTyping();
 				this.setMessageStatus(userEl, "failed");
