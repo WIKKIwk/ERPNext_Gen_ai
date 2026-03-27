@@ -145,22 +145,7 @@
 							});
 						}
 					}
-						const fullFormBtn = this.findQuickEntryActionButton("edit_full_form");
-						if (!fullFormBtn) {
-							return await finish(
-								{ ok: false, message: '"Edit Full Form" tugmasini topa olmadim.' },
-								"quick_entry_full_form_missing"
-							);
-						}
-					const openedFullForm = await this.focusElement(
-						fullFormBtn,
-						'"Edit Full Form" ni bosib to\'liq formaga o\'tamiz.',
-						{
-							click: true,
-							duration_ms: 300,
-							pre_click_pause_ms: 120,
-						}
-					);
+					const openedFullForm = await this.openQuickEntryFullForm(doctype);
 					if (openedFullForm) {
 						this.emitProgress("📝 `Edit Full Form` bosildi, endi to'liq formani to'ldirishga o'tamiz.");
 						await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
@@ -179,6 +164,11 @@
 								"full_form_not_ready_after_open"
 							);
 						}
+					} else {
+						return await finish(
+							{ ok: false, message: '"Edit Full Form" tugmasini yoki Quick Entry controllerini ishga tushirib bo\'lmadi.' },
+							"quick_entry_full_form_missing"
+						);
 					}
 				}
 

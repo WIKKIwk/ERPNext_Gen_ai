@@ -1651,9 +1651,10 @@
 			}
 
 			getQuickEntryDialog() {
+				const quickEntryController = window.frappe?.quick_entry || null;
 				const quickEntryWrapper =
-					window.frappe?.quick_entry?.dialog?.wrapper?.get?.(0) ||
-					window.frappe?.quick_entry?.dialog?.wrapper?.[0] ||
+					quickEntryController?.dialog?.wrapper?.get?.(0) ||
+					quickEntryController?.dialog?.wrapper?.[0] ||
 					null;
 				if (quickEntryWrapper && isVisible(quickEntryWrapper)) return quickEntryWrapper;
 
@@ -1678,14 +1679,28 @@
 				return null;
 			}
 
+			getQuickEntryController(doctype = "") {
+				const controller = window.frappe?.quick_entry || null;
+				if (!controller) return null;
+				const dt = String(doctype || "").trim().toLowerCase();
+				if (!dt) return controller;
+				if (String(controller.doctype || "").trim().toLowerCase() === dt) return controller;
+				return null;
+			}
+
 			isQuickEntryOpen() {
 				return Boolean(this.getQuickEntryDialog());
 			}
 
-			findQuickEntryActionButton(kind = "edit_full_form") {
+			findQuickEntryActionButton(kind = "edit_full_form", doctype = "") {
 				const dialog = this.getQuickEntryDialog();
 				if (!dialog) return null;
-				const nodes = dialog.querySelectorAll("button, a.btn, [role='button']");
+				const controller = this.getQuickEntryController(doctype);
+				const nodes = [
+					...dialog.querySelectorAll("button, a.btn, [role='button']"),
+					...(controller?.dialog?.custom_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+					...(controller?.dialog?.standard_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+				];
 				const kindNorm = String(kind || "").trim().toLowerCase();
 				const editRe = /\b(edit\s*full\s*form|full\s*form|to['’]?liq\s*forma|полная\s*форма)\b/i;
 				const saveRe = /\b(save|submit|saqla|saqlash|сохран|провест|отправ)\b/i;
@@ -1698,6 +1713,41 @@
 					if (kindNorm === "save" && saveRe.test(label)) return el;
 				}
 				return null;
+			}
+
+			async openQuickEntryFullForm(doctype) {
+				const dt = String(doctype || "").trim();
+				if (!dt || !this.isQuickEntryOpen()) return false;
+				const fullFormBtn = this.findQuickEntryActionButton("edit_full_form", dt);
+				if (fullFormBtn) {
+					const clicked = await this.focusElement(
+						fullFormBtn,
+						'"Edit Full Form" ni bosib to\'liq formaga o\'tamiz.',
+						{
+							click: true,
+							duration_ms: 300,
+							pre_click_pause_ms: 120,
+						}
+					);
+					if (clicked) {
+						await this.waitFor(() => this.isOnDoctypeNewForm(dt), 5200, 120);
+						return this.isOnDoctypeNewForm(dt);
+					}
+				}
+
+				const controller = this.getQuickEntryController(dt);
+				if (controller && typeof controller.open_doc === "function") {
+					try {
+						this.emitProgress('🧭 "Edit Full Form" DOM orqali topilmadi, Quick Entry controller orqali to\'liq formaga o\'tamiz.');
+						controller.open_doc(true);
+						await this.waitFor(() => this.isOnDoctypeNewForm(dt), 5200, 120);
+						return this.isOnDoctypeNewForm(dt);
+					} catch {
+						// ignore
+					}
+				}
+
+				return false;
 			}
 
 			getFieldLabel(fieldname) {
@@ -3268,22 +3318,7 @@
 							});
 						}
 					}
-						const fullFormBtn = this.findQuickEntryActionButton("edit_full_form");
-						if (!fullFormBtn) {
-							return await finish(
-								{ ok: false, message: '"Edit Full Form" tugmasini topa olmadim.' },
-								"quick_entry_full_form_missing"
-							);
-						}
-					const openedFullForm = await this.focusElement(
-						fullFormBtn,
-						'"Edit Full Form" ni bosib to\'liq formaga o\'tamiz.',
-						{
-							click: true,
-							duration_ms: 300,
-							pre_click_pause_ms: 120,
-						}
-					);
+					const openedFullForm = await this.openQuickEntryFullForm(doctype);
 					if (openedFullForm) {
 						this.emitProgress("📝 `Edit Full Form` bosildi, endi to'liq formani to'ldirishga o'tamiz.");
 						await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
@@ -3302,6 +3337,11 @@
 								"full_form_not_ready_after_open"
 							);
 						}
+					} else {
+						return await finish(
+							{ ok: false, message: '"Edit Full Form" tugmasini yoki Quick Entry controllerini ishga tushirib bo\'lmadi.' },
+							"quick_entry_full_form_missing"
+						);
 					}
 				}
 
