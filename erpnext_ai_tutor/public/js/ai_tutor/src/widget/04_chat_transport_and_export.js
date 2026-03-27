@@ -368,6 +368,8 @@
 						auto: false,
 						triggerEl,
 						messageTs,
+						offer_mode: normalizedOffer.mode,
+						offer_target_label: normalizedOffer.target_label,
 					});
 					return;
 				}

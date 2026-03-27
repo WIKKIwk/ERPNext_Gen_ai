@@ -1,5 +1,6 @@
 			async run(guideRaw, runOptions = {}) {
-				const guide = this.normalizeGuide(guideRaw);
+				const normalizedGuide = this.normalizeGuide(guideRaw);
+				const guide = this.repairGuideFromRunOptions(normalizedGuide, runOptions);
 				if (!guide) return { ok: false, message: "Guide payload noto'g'ri." };
 				const isCreateTutorial = this.isCreateTutorial(guide);
 				const isManageRolesTutorial = this.isManageRolesTutorial(guide);

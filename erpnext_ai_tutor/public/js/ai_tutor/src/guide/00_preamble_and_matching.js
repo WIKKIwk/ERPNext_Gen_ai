@@ -300,6 +300,29 @@
 			};
 		}
 
+			repairGuideFromRunOptions(guideRaw, runOptions = {}) {
+				const guide = guideRaw && typeof guideRaw === "object" ? { ...guideRaw } : null;
+				if (!guide) return guideRaw;
+				if (guide.tutorial && typeof guide.tutorial === "object") return guide;
+				const offerMode = String(runOptions?.offer_mode || "").trim().toLowerCase();
+				const targetLabel = String(runOptions?.offer_target_label || guide.target_label || "").trim();
+				if (!targetLabel) return guide;
+				if (offerMode === "create_record") {
+					guide.tutorial = {
+						mode: "create_record",
+						stage: "open_and_fill_basic",
+						doctype: targetLabel,
+					};
+				} else if (offerMode === "manage_roles") {
+					guide.tutorial = {
+						mode: "manage_roles",
+						stage: "open_roles_tab",
+						doctype: targetLabel || "User",
+					};
+				}
+				return guide;
+			}
+
 			createLayer() {
 				if (this.$layer && document.body.contains(this.$layer)) return;
 			this.$layer = document.createElement("div");
