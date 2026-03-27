@@ -499,6 +499,26 @@
 				return null;
 			}
 
+			getQuickEntryVisibleActions(doctype = "") {
+				const dialog = this.getQuickEntryDialog();
+				if (!dialog) return [];
+				const controller = this.getQuickEntryController(doctype);
+				const nodes = [
+					...dialog.querySelectorAll("button, a.btn, [role='button']"),
+					...(controller?.dialog?.custom_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+					...(controller?.dialog?.standard_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+				];
+				const out = [];
+				for (const node of nodes) {
+					const el = node || null;
+					if (!el || !isVisible(el)) continue;
+					const label = String(this.getElementLabel(el) || "").trim();
+					if (!label) continue;
+					if (!out.includes(label)) out.push(label);
+				}
+				return out.slice(0, 10);
+			}
+
 			async openQuickEntryFullForm(doctype) {
 				const dt = String(doctype || "").trim();
 				if (!dt || !this.isQuickEntryOpen()) return false;
@@ -518,19 +538,6 @@
 						return this.isOnDoctypeNewForm(dt);
 					}
 				}
-
-				const controller = this.getQuickEntryController(dt);
-				if (controller && typeof controller.open_doc === "function") {
-					try {
-						this.emitProgress('🧭 "Edit Full Form" DOM orqali topilmadi, Quick Entry controller orqali to\'liq formaga o\'tamiz.');
-						controller.open_doc(true);
-						await this.waitFor(() => this.isOnDoctypeNewForm(dt), 5200, 120);
-						return this.isOnDoctypeNewForm(dt);
-					} catch {
-						// ignore
-					}
-				}
-
 				return false;
 			}
 

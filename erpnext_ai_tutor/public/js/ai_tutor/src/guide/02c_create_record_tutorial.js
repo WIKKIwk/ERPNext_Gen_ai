@@ -165,8 +165,17 @@
 							);
 						}
 					} else {
+						const visibleActions = this.getQuickEntryVisibleActions(doctype);
+						this.traceTutorialEvent("create_record.quick_entry_actions", {
+							actions: visibleActions,
+						});
 						return await finish(
-							{ ok: false, message: '"Edit Full Form" tugmasini yoki Quick Entry controllerini ishga tushirib bo\'lmadi.' },
+							{
+								ok: false,
+								message: visibleActions.length
+									? `"Edit Full Form" topilmadi. Quick Entry ichida ko'ringan amallar: ${visibleActions.join(", ")}.`
+									: '"Edit Full Form" topilmadi va Quick Entry ichida ko\'ringan action label topilmadi.',
+							},
 							"quick_entry_full_form_missing"
 						);
 					}

@@ -1715,6 +1715,26 @@
 				return null;
 			}
 
+			getQuickEntryVisibleActions(doctype = "") {
+				const dialog = this.getQuickEntryDialog();
+				if (!dialog) return [];
+				const controller = this.getQuickEntryController(doctype);
+				const nodes = [
+					...dialog.querySelectorAll("button, a.btn, [role='button']"),
+					...(controller?.dialog?.custom_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+					...(controller?.dialog?.standard_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+				];
+				const out = [];
+				for (const node of nodes) {
+					const el = node || null;
+					if (!el || !isVisible(el)) continue;
+					const label = String(this.getElementLabel(el) || "").trim();
+					if (!label) continue;
+					if (!out.includes(label)) out.push(label);
+				}
+				return out.slice(0, 10);
+			}
+
 			async openQuickEntryFullForm(doctype) {
 				const dt = String(doctype || "").trim();
 				if (!dt || !this.isQuickEntryOpen()) return false;
@@ -1734,19 +1754,6 @@
 						return this.isOnDoctypeNewForm(dt);
 					}
 				}
-
-				const controller = this.getQuickEntryController(dt);
-				if (controller && typeof controller.open_doc === "function") {
-					try {
-						this.emitProgress('🧭 "Edit Full Form" DOM orqali topilmadi, Quick Entry controller orqali to\'liq formaga o\'tamiz.');
-						controller.open_doc(true);
-						await this.waitFor(() => this.isOnDoctypeNewForm(dt), 5200, 120);
-						return this.isOnDoctypeNewForm(dt);
-					} catch {
-						// ignore
-					}
-				}
-
 				return false;
 			}
 
@@ -3338,8 +3345,17 @@
 							);
 						}
 					} else {
+						const visibleActions = this.getQuickEntryVisibleActions(doctype);
+						this.traceTutorialEvent("create_record.quick_entry_actions", {
+							actions: visibleActions,
+						});
 						return await finish(
-							{ ok: false, message: '"Edit Full Form" tugmasini yoki Quick Entry controllerini ishga tushirib bo\'lmadi.' },
+							{
+								ok: false,
+								message: visibleActions.length
+									? `"Edit Full Form" topilmadi. Quick Entry ichida ko'ringan amallar: ${visibleActions.join(", ")}.`
+									: '"Edit Full Form" topilmadi va Quick Entry ichida ko\'ringan action label topilmadi.',
+							},
 							"quick_entry_full_form_missing"
 						);
 					}
