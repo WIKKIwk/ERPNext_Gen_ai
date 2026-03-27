@@ -2351,14 +2351,7 @@
 			const normalizedGuide = this.normalizeGuidePayload(guide);
 			const labelRouteMap = this.buildGuideLabelRouteMap(normalizedGuide);
 			const routeLabelMap = this.buildGuideRouteLabelMap(normalizedGuide);
-			let assistantText = String(content ?? "");
-			if (normalizedGuide?.target_label && normalizedGuide?.route) {
-				const target = String(normalizedGuide.target_label).trim();
-				const token = `**${target}**`;
-				if (target && !assistantText.includes(token)) {
-					assistantText = `${assistantText}\n\n${token}`;
-				}
-			}
+			const assistantText = String(content ?? "");
 			return { assistantText, normalizedGuide, labelRouteMap, routeLabelMap };
 		}
 
