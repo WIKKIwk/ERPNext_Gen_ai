@@ -1518,14 +1518,7 @@
 			if (role === "assistant") {
 				const labelRouteMap = this.buildGuideLabelRouteMap(guide);
 				const routeLabelMap = this.buildGuideRouteLabelMap(guide);
-				let assistantText = String(content ?? "");
-				if (guide?.target_label && guide?.route) {
-					const target = String(guide.target_label).trim();
-					const token = `**${target}**`;
-					if (target && !assistantText.includes(token)) {
-						assistantText = `${assistantText}\n\n${token}`;
-					}
-				}
+				const assistantText = String(content ?? "");
 				this.renderRichText(text, assistantText, { labelRouteMap, routeLabelMap });
 			} else {
 				text.textContent = String(content ?? "");
