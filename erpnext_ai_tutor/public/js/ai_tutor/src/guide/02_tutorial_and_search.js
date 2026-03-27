@@ -49,39 +49,66 @@
 			return String(guide?.tutorial?.doctype || guide?.target_label || "").trim();
 		}
 
-			isOnDoctypeNewForm(doctype) {
-			const slug = this.doctypeToRouteSlug(doctype);
-			if (!slug) return false;
-			const path = this.normalizePath(window.location.pathname || "");
-			if (path.startsWith(`/app/${slug}/new-`)) return true;
-			try {
-				const route = Array.isArray(frappe?.get_route?.()) ? frappe.get_route() : [];
-				if (!route.length) return false;
-				const head = String(route[0] || "").trim().toLowerCase();
-				const second = String(route[1] || "").trim().toLowerCase();
-				if (head === "form" && second === String(doctype || "").trim().toLowerCase()) return true;
-				if (head === slug && second.startsWith("new-")) return true;
-			} catch {
-				// ignore
-			}
-				return false;
+			isNewDocRouteName(doctype, docname = "") {
+				const slug = this.doctypeToRouteSlug(doctype);
+				const name = String(docname || "").trim().toLowerCase();
+				if (!slug || !name) return false;
+				return name.startsWith(`new-${slug}`);
 			}
 
-			isOnDoctypeForm(doctype) {
+			getCurrentFormRouteName(doctype) {
 				const slug = this.doctypeToRouteSlug(doctype);
-				if (!slug) return false;
-				const path = this.normalizePath(window.location.pathname || "");
-				if (path.startsWith(`/app/${slug}/`) && !path.startsWith(`/app/${slug}/new-`)) return true;
+				const dtNorm = String(doctype || "").trim().toLowerCase();
+				if (!slug || !dtNorm) return "";
 				try {
 					const route = Array.isArray(frappe?.get_route?.()) ? frappe.get_route() : [];
-					if (!route.length) return false;
-					const head = String(route[0] || "").trim().toLowerCase();
-					const second = String(route[1] || "").trim().toLowerCase();
-					if (head === "form" && second === String(doctype || "").trim().toLowerCase()) return true;
+					if (route.length) {
+						const head = String(route[0] || "").trim().toLowerCase();
+						const second = String(route[1] || "").trim().toLowerCase();
+						const third = String(route[2] || "").trim();
+						if (head === "form" && second === dtNorm && third) return third;
+						if (head === slug && second && !["view", "list", "report"].includes(second)) {
+							return String(route[1] || "").trim();
+						}
+					}
 				} catch {
 					// ignore
 				}
-				return false;
+				const path = this.normalizePath(window.location.pathname || "");
+				if (!path.startsWith(`/app/${slug}/`)) return "";
+				const suffix = path.slice(`/app/${slug}/`.length);
+				const routeName = String(suffix.split("/", 1)[0] || "").trim();
+				if (!routeName || ["view", "list", "report"].includes(routeName.toLowerCase())) return "";
+				return routeName;
+			}
+
+			getDoctypeFormState(doctype) {
+				const dtNorm = String(doctype || "").trim().toLowerCase();
+				if (!dtNorm) return "not_form";
+				const frm = window.cur_frm;
+				if (frm && String(frm.doctype || "").trim().toLowerCase() === dtNorm) {
+					try {
+						if (typeof frm.is_new === "function") {
+							return frm.is_new() ? "new_form" : "existing_form";
+						}
+					} catch {
+						// ignore
+					}
+					if (frm.doc && frm.doc.__islocal) return "new_form";
+					if (frm.doc && String(frm.doc.name || "").trim()) return "existing_form";
+				}
+				const routeName = this.getCurrentFormRouteName(doctype);
+				if (!routeName) return "not_form";
+				return this.isNewDocRouteName(doctype, routeName) ? "new_form" : "existing_form";
+			}
+
+			isOnDoctypeNewForm(doctype) {
+				return this.getDoctypeFormState(doctype) === "new_form";
+			}
+
+			isOnDoctypeForm(doctype) {
+				const formState = this.getDoctypeFormState(doctype);
+				return formState === "new_form" || formState === "existing_form";
 			}
 
 			isOnDoctypeList(doctype) {
