@@ -873,15 +873,9 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 	if advanced_mode:
 		reply, guide_requested_by_llm = _extract_guide_flag(reply)
 
-	guide: Dict[str, Any] = {}
-	if advanced_mode and guide_requested_by_llm:
-		if not nav_plan:
-			nav_plan = build_navigation_plan(user_message)
-		if nav_plan:
-			guide = _guide_from_nav_plan(nav_plan)
-
+	guide_offer_decision: Dict[str, Any] | None = None
 	guide_offer: Dict[str, Any] | None = None
-	if advanced_mode and not guide and not troubleshoot and not is_auto:
+	if advanced_mode and not troubleshoot and not is_auto:
 		guide_offer_decision = build_guide_offer_decision(user_message, ctx)
 		if isinstance(guide_offer_decision, dict):
 			guide_offer = guide_offer_decision.get("guide_offer")
@@ -890,6 +884,22 @@ def chat(message: str, context: Any | None = None, history: Any | None = None) -
 				diagnostic=guide_offer_decision.get("diagnostic"),
 				lang=lang,
 			)
+
+	# Explain-first contract:
+	# plain teaching requests may show an optional guide affordance,
+	# but must not turn into executable plain-chat guides.
+	offer_mode = str((guide_offer or {}).get("mode") or "").strip().lower()
+	suppress_llm_guide = offer_mode in {"create_record", "manage_roles"}
+
+	guide: Dict[str, Any] = {}
+	if advanced_mode and guide_requested_by_llm and not suppress_llm_guide:
+		if not nav_plan:
+			nav_plan = build_navigation_plan(user_message)
+		if nav_plan:
+			guide = _guide_from_nav_plan(nav_plan)
+
+	if guide:
+		guide_offer = None
 
 	result_payload = {"ok": True, "reply": reply or "", "guide": guide, "guide_offer": guide_offer}
 	_log_chat_diagnostic(
