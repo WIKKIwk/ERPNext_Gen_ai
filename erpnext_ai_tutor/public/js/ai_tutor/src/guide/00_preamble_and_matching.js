@@ -219,6 +219,22 @@
 					return result;
 				}
 
+				async logGuideProbe(name, data = {}, level = "info") {
+					try {
+						await frappe.call("erpnext_ai_tutor.api.log_tutorial_trace", {
+							trace: {
+								probe: true,
+								name: String(name || "guide_probe").trim().slice(0, 90),
+								data: this.sanitizeTraceValue(data || {}),
+								logged_at_client: new Date().toISOString(),
+							},
+							level,
+						});
+					} catch {
+						// ignore probe logging failures
+					}
+				}
+
 			normalizeGuide(raw) {
 			if (!raw || typeof raw !== "object") return null;
 			if (String(raw.type || "") !== "navigation") return null;

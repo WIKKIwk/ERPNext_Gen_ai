@@ -356,6 +356,18 @@
 					payload?.guide || payload?.data?.guide || r?.guide || null,
 					normalizedOffer
 				);
+				this.guideRunner?.logGuideProbe?.("widget.start_guide_from_offer", {
+					offer_mode: String(normalizedOffer?.mode || "").trim().toLowerCase(),
+					offer_target_label: String(normalizedOffer?.target_label || "").trim(),
+					payload_has_guide: Boolean(payload?.guide || payload?.data?.guide || r?.guide),
+					payload_has_tutorial: Boolean((payload?.guide || payload?.data?.guide || r?.guide || null)?.tutorial),
+					repaired_has_tutorial: Boolean(guide?.tutorial),
+					repaired_tutorial_mode: String(guide?.tutorial?.mode || "").trim().toLowerCase(),
+					repaired_tutorial_stage: String(guide?.tutorial?.stage || "").trim().toLowerCase(),
+					repaired_tutorial_doctype: String(guide?.tutorial?.doctype || "").trim(),
+					guide_route: String(guide?.route || "").trim(),
+					guide_target_label: String(guide?.target_label || "").trim(),
+				});
 				const replyText = String(payload?.reply || payload?.message || r?.message || "").trim();
 				if (replyText) {
 					await this.appendAssistantWithTypingEffect(replyText, {

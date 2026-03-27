@@ -219,6 +219,22 @@
 					return result;
 				}
 
+				async logGuideProbe(name, data = {}, level = "info") {
+					try {
+						await frappe.call("erpnext_ai_tutor.api.log_tutorial_trace", {
+							trace: {
+								probe: true,
+								name: String(name || "guide_probe").trim().slice(0, 90),
+								data: this.sanitizeTraceValue(data || {}),
+								logged_at_client: new Date().toISOString(),
+							},
+							level,
+						});
+					} catch {
+						// ignore probe logging failures
+					}
+				}
+
 			normalizeGuide(raw) {
 			if (!raw || typeof raw !== "object") return null;
 			if (String(raw.type || "") !== "navigation") return null;
@@ -4093,6 +4109,19 @@
 				const isCreateTutorial = this.isCreateTutorial(guide);
 				const isManageRolesTutorial = this.isManageRolesTutorial(guide);
 				const isTutorial = Boolean(isCreateTutorial || isManageRolesTutorial);
+				this.logGuideProbe("guide_runner.run", {
+					offer_mode: String(runOptions?.offer_mode || "").trim().toLowerCase(),
+					offer_target_label: String(runOptions?.offer_target_label || "").trim(),
+					guide_route: String(guide?.route || "").trim(),
+					guide_target_label: String(guide?.target_label || "").trim(),
+					has_tutorial: Boolean(guide?.tutorial),
+					tutorial_mode: String(guide?.tutorial?.mode || "").trim().toLowerCase(),
+					tutorial_stage: String(guide?.tutorial?.stage || "").trim().toLowerCase(),
+					tutorial_doctype: String(guide?.tutorial?.doctype || "").trim(),
+					is_create_tutorial: isCreateTutorial,
+					is_manage_roles_tutorial: isManageRolesTutorial,
+					is_tutorial: isTutorial,
+				});
 			if (!isTutorial && guide.route && this.isAtRoute(guide.route)) {
 				return {
 					ok: true,
