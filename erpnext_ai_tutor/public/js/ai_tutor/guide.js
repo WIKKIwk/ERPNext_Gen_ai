@@ -1692,21 +1692,50 @@
 				return Boolean(this.getQuickEntryDialog());
 			}
 
-			findQuickEntryActionButton(kind = "edit_full_form", doctype = "") {
+			getQuickEntryActionNodes(doctype = "") {
 				const dialog = this.getQuickEntryDialog();
-				if (!dialog) return null;
+				if (!dialog) return [];
 				const controller = this.getQuickEntryController(doctype);
-				const nodes = [
-					...dialog.querySelectorAll("button, a.btn, [role='button']"),
+				const rawNodes = [
 					...(controller?.dialog?.custom_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+					...(dialog.querySelectorAll(".modal-footer .custom-actions button, .modal-footer .custom-actions a.btn, .modal-footer .custom-actions [role='button']") || []),
 					...(controller?.dialog?.standard_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
+					...(dialog.querySelectorAll(".modal-footer .standard-actions button, .modal-footer .standard-actions a.btn, .modal-footer .standard-actions [role='button']") || []),
+					...dialog.querySelectorAll("button, a.btn, [role='button']"),
 				];
+				const out = [];
+				const seen = new Set();
+				for (const node of rawNodes) {
+					const el = getClickable(node) || node;
+					if (!el || !isVisible(el)) continue;
+					if (seen.has(el)) continue;
+					seen.add(el);
+					out.push(el);
+				}
+				return out;
+			}
+
+			findQuickEntryActionButton(kind = "edit_full_form", doctype = "") {
+				const nodes = this.getQuickEntryActionNodes(doctype);
+				if (!nodes.length) return null;
 				const kindNorm = String(kind || "").trim().toLowerCase();
 				const editRe = /\b(edit\s*full\s*form|full\s*form|to['’]?liq\s*forma|полная\s*форма)\b/i;
 				const saveRe = /\b(save|submit|saqla|saqlash|сохран|провест|отправ)\b/i;
+				const closeRe = /\b(close|cancel|bekor|закрыть|отмена)\b/i;
+
+				if (kindNorm === "edit_full_form") {
+					for (const el of nodes) {
+						const label = this.getElementLabel(el);
+						if (!label) continue;
+						const labelNorm = normalizeText(label);
+						if (!labelNorm) continue;
+						if (saveRe.test(labelNorm) || closeRe.test(labelNorm)) continue;
+						if (el.closest(".custom-actions")) return el;
+					}
+				}
+
 				for (const node of nodes) {
-					const el = getClickable(node) || node;
-					if (!el || !isVisible(el)) continue;
+					const el = node;
 					const label = this.getElementLabel(el);
 					if (!label) continue;
 					if (kindNorm === "edit_full_form" && editRe.test(label)) return el;
@@ -1716,18 +1745,10 @@
 			}
 
 			getQuickEntryVisibleActions(doctype = "") {
-				const dialog = this.getQuickEntryDialog();
-				if (!dialog) return [];
-				const controller = this.getQuickEntryController(doctype);
-				const nodes = [
-					...dialog.querySelectorAll("button, a.btn, [role='button']"),
-					...(controller?.dialog?.custom_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
-					...(controller?.dialog?.standard_actions?.find?.("button, a.btn, [role='button']")?.toArray?.() || []),
-				];
+				const nodes = this.getQuickEntryActionNodes(doctype);
 				const out = [];
 				for (const node of nodes) {
 					const el = node || null;
-					if (!el || !isVisible(el)) continue;
 					const label = String(this.getElementLabel(el) || "").trim();
 					if (!label) continue;
 					if (!out.includes(label)) out.push(label);
