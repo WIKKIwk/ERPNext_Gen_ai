@@ -337,10 +337,20 @@
 			return null;
 		}
 
+				getTutorialFieldSearchRoot() {
+					const quickEntryDialog = this.getQuickEntryDialog();
+					if (quickEntryDialog && isVisible(quickEntryDialog)) return quickEntryDialog;
+					const frm = window.cur_frm;
+					const wrapper = frm?.wrapper?.get?.(0) || frm?.wrapper?.[0] || null;
+					if (wrapper && isVisible(wrapper)) return wrapper;
+					return document;
+				}
+
 				findFieldInput(fieldname, opts = {}) {
 					const key = String(fieldname || "").trim();
 					if (!key) return null;
 					const allowHidden = Boolean(opts?.allowHidden);
+					const root = this.getTutorialFieldSearchRoot();
 				const selectors = [
 					`.frappe-control[data-fieldname='${key}'] input:not([type='hidden'])`,
 					`.frappe-control[data-fieldname='${key}'] .control-input input:not([type='hidden'])`,
@@ -353,7 +363,7 @@
 					`.control-input-wrapper [data-fieldname='${key}'] input:not([type='hidden'])`,
 				];
 				for (const sel of selectors) {
-					const nodes = document.querySelectorAll(sel);
+					const nodes = root.querySelectorAll(sel);
 					for (const el of nodes) {
 						if (!el) continue;
 						if (!allowHidden && !isVisible(el)) continue;

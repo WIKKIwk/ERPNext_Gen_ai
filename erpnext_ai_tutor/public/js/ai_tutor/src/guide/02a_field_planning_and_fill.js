@@ -103,7 +103,8 @@
 					const key = String(fieldname || "").trim();
 					if (!key) return null;
 					const allowHidden = Boolean(opts?.allowHidden);
-					const control = document.querySelector(`.frappe-control[data-fieldname='${key}']`);
+					const root = this.getTutorialFieldSearchRoot();
+					const control = root.querySelector(`.frappe-control[data-fieldname='${key}']`);
 					if (!control) return null;
 					if (!allowHidden && !isVisible(control)) return null;
 					return control;
@@ -187,7 +188,8 @@
 				async ensureFieldTabVisible(fieldname, label = "") {
 					const key = String(fieldname || "").trim();
 					if (!key) return false;
-					const control = document.querySelector(`.frappe-control[data-fieldname='${key}']`);
+					const root = this.getTutorialFieldSearchRoot();
+					const control = root.querySelector(`.frappe-control[data-fieldname='${key}']`);
 					if (!control) return false;
 
 					const pane = control.closest(".tab-pane");
@@ -204,7 +206,7 @@
 						`.form-tabs a[data-target='#${paneId}']`,
 					];
 					for (const sel of tabSelectors) {
-						const tabBtn = document.querySelector(sel);
+						const tabBtn = root.querySelector(sel) || document.querySelector(sel);
 						if (!tabBtn || !isVisible(tabBtn)) continue;
 						await this.focusElement(
 							tabBtn,
@@ -259,7 +261,8 @@
 				isControlInvalid(fieldname) {
 					const key = String(fieldname || "").trim();
 					if (!key) return false;
-					const control = document.querySelector(`.frappe-control[data-fieldname='${key}']`);
+					const root = this.getTutorialFieldSearchRoot();
+					const control = root.querySelector(`.frappe-control[data-fieldname='${key}']`);
 					if (!control) return false;
 					if (control.classList.contains("has-error") || control.classList.contains("invalid")) return true;
 					return Boolean(control.querySelector(".has-error, .invalid-feedback, .text-danger"));
