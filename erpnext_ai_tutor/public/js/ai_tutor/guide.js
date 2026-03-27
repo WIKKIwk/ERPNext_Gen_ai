@@ -1881,13 +1881,31 @@
 						]);
 					}
 
-					isFieldAllowedForTutorialStage(doctype, stage, fieldname) {
-						const key = String(fieldname || "").trim().toLowerCase();
-						if (!key) return false;
-						const allowlist = this.getTutorialFieldAllowlist(doctype, stage);
-						if (!allowlist) return true;
-						return allowlist.has(key);
-					}
+				isFieldAllowedForTutorialStage(doctype, stage, fieldname) {
+					const key = String(fieldname || "").trim().toLowerCase();
+					if (!key) return false;
+					const allowlist = this.getTutorialFieldAllowlist(doctype, stage);
+					if (!allowlist) return true;
+					return allowlist.has(key);
+				}
+
+				getFieldControlElement(fieldname, opts = {}) {
+					const key = String(fieldname || "").trim();
+					if (!key) return null;
+					const allowHidden = Boolean(opts?.allowHidden);
+					const control = document.querySelector(`.frappe-control[data-fieldname='${key}']`);
+					if (!control) return null;
+					if (!allowHidden && !isVisible(control)) return null;
+					return control;
+				}
+
+				isFieldPresentInUI(fieldname) {
+					return Boolean(this.getFieldControlElement(fieldname, { allowHidden: true }));
+				}
+
+				isFieldVisibleInUI(fieldname) {
+					return Boolean(this.getFieldControlElement(fieldname, { allowHidden: false }));
+				}
 
 					collectPlannerFieldCandidates(doctype, stage = "open_and_fill_basic") {
 						const out = [];
@@ -1899,6 +1917,7 @@
 					if (!df || !df.fieldname) continue;
 						const fieldname = String(df.fieldname || "").trim();
 						if (!fieldname) continue;
+						if (!this.isFieldPresentInUI(fieldname)) continue;
 						if (!this.isFieldAllowedForTutorialStage(doctype, stage, fieldname)) continue;
 						const fieldtype = String(df.fieldtype || "Data").trim() || "Data";
 						if (
@@ -1927,6 +1946,7 @@
 								required: Boolean(df.reqd),
 								read_only: Boolean(df.read_only),
 								hidden: Boolean(df.hidden),
+								visible_in_ui: this.isFieldVisibleInUI(fieldname),
 							current_value:
 								currentValue === null || currentValue === undefined ? "" : String(currentValue).trim(),
 							options:
@@ -2199,6 +2219,7 @@
 						if (!row || typeof row !== "object") return;
 						const fieldname = String(row.fieldname || "").trim();
 						if (!fieldname || seen.has(fieldname)) return;
+						if (!this.isFieldPresentInUI(fieldname)) return;
 						const df = this.getFieldMeta(fieldname);
 						if (!df) return;
 						if (Boolean(df.read_only) || Boolean(df.hidden)) return;
@@ -2419,9 +2440,13 @@
 				getFormFieldSamplePlans(doctype, stage = "open_and_fill_basic") {
 					const dt = String(doctype || "").trim();
 					const lower = dt.toLowerCase();
+					const visibleCandidates = this.collectPlannerFieldCandidates(doctype, stage);
+					const visibleMap = new Map(visibleCandidates.map((row) => [String(row.fieldname || "").trim(), row]));
+					const pickVisibleRows = (rows = []) =>
+						rows.filter((row) => visibleMap.has(String(row?.fieldname || "").trim()));
 					if (lower === "user") {
 						if (stage === "fill_more") return [];
-						return [
+						return pickVisibleRows([
 							{
 								fieldname: "email",
 								label: "Email",
@@ -2440,7 +2465,7 @@
 								value: "demo.user",
 								reason: "login nomini ko'rsatish uchun",
 							},
-						];
+						]);
 					}
 					if (lower === "item") {
 					const base = [
@@ -2462,44 +2487,42 @@
 							value: "All Item Groups",
 							reason: "mahsulotni toifaga biriktirish uchun",
 						},
-						{
-							fieldname: "stock_uom",
-							label: "Stock UOM",
-							value: "Nos",
-							reason: "ombor hisobi o'lchov birligida yurishi uchun",
-						},
-					];
+							{
+								fieldname: "stock_uom",
+								label: "Stock UOM",
+								value: "Nos",
+								reason: "ombor hisobi o'lchov birligida yurishi uchun",
+							},
+						];
 					if (stage === "fill_more") {
-						return [
+						return pickVisibleRows([
 							{
 								fieldname: "description",
 								label: "Description",
 								value: "AI Tutor orqali yaratilgan demo yozuv.",
 								reason: "izoh maydonini ham amalda ko'rsatish uchun",
 							},
-						];
+						]);
 						}
-						return base;
+						return pickVisibleRows(base);
 					}
 					if (lower === "stock entry") {
-						return [
+						return pickVisibleRows([
 							{
 								fieldname: "stock_entry_type",
 								label: "Stock Entry Type",
 								value: this.getStockEntryTypePreferredOrder()[0],
 								reason: "ombor amaliyoti turi tanlanmasa qolgan qadamlar ishonchli ishlamaydi",
 							},
-						];
+						]);
 					}
 
-					const frm = window.cur_frm;
-					if (!frm || String(frm.doctype || "").trim().toLowerCase() !== lower) return [];
-					const fields = Array.isArray(frm.meta?.fields) ? frm.meta.fields : [];
 					const plans = [];
 					const limit = this.getTutorialPlanLimit(stage);
-				for (const df of fields) {
-						if (!df || !df.fieldname) continue;
-						if (df.hidden || df.read_only) continue;
+				for (const candidate of visibleCandidates) {
+						if (!candidate || !candidate.fieldname) continue;
+						const df = this.getFieldMeta(candidate.fieldname);
+						if (!df || df.hidden || df.read_only) continue;
 						const ft = String(df.fieldtype || "").trim();
 						if (!["Data", "Small Text", "Text", "Int", "Float", "Currency", "Select"].includes(ft)) continue;
 						const fieldname = String(df.fieldname || "").trim();
@@ -2616,15 +2639,7 @@
 						await this.ensureFieldTabVisible(fieldname, label);
 						const input = this.findFieldInput(fieldname, { allowHidden: false });
 						if (!input) {
-							const modelOnlyOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
-								if (modelOnlyOk) {
-									addBackgroundEntry(label, valueToType, reason);
-									this.emitProgress(
-										`ℹ️ **${label}** qiymati tayyorlandi. Endi bu maydonni ekranda cursor bilan bosib, amalda birga tasdiqlaymiz.`
-									);
-								} else {
-								this.emitProgress(`⚠️ **${label}** maydoni UIda topilmadi va model orqali ham to'ldirib bo'lmadi.`);
-							}
+							this.emitProgress(`⚠️ **${label}** maydoni hozir UIda ko'rinmadi, shu qadamni o'tkazdim.`);
 							continue;
 						}
 
@@ -2649,15 +2664,7 @@
 								`✅ **${label}** maydoni \`${String(valueToType || "").trim()}\` bilan to'ldirildi, sababi: ${reason}.`
 							);
 						} else {
-							const fallbackOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
-								if (fallbackOk) {
-									addBackgroundEntry(label, valueToType, reason);
-									this.emitProgress(
-										`ℹ️ **${label}** qiymati tayyorlandi. Endi UI'da shu maydonni birga bosib tasdiqlaymiz.`
-									);
-								} else {
-								this.emitProgress(`⚠️ **${label}** qiymati form tomonidan qabul qilinmadi, qayta tekshirish kerak.`);
-							}
+							this.emitProgress(`⚠️ **${label}** qiymati UI orqali tasdiqlanmadi, keyingi maydonga o'tdim.`);
 						}
 					}
 
@@ -2695,18 +2702,7 @@
 								await this.ensureFieldTabVisible(fieldname, label);
 								const input = this.findFieldInput(fieldname, { allowHidden: false });
 								if (!input) {
-									const modelOnlyOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
-									if (modelOnlyOk) {
-										const afterModelOnly = this.readFieldValue(fieldname);
-										if (this.isFieldValueFilled(df, afterModelOnly) && !this.isControlInvalid(fieldname)) {
-											addBackgroundEntry(label, valueToType, "majburiy maydonni to'ldirish uchun");
-											roundProgress = true;
-										} else {
-											failedRequired.add(fieldname);
-										}
-									} else {
-										failedRequired.add(fieldname);
-									}
+									failedRequired.add(fieldname);
 									continue;
 								}
 
@@ -2732,18 +2728,7 @@
 									roundProgress = true;
 									this.emitProgress(`✅ Majburiy **${label}** maydoni to'ldirildi.`);
 								} else {
-									const fallbackOk = await this.setDocFieldValue(fieldname, valueToType, label, { silent: true });
-									if (fallbackOk) {
-										const afterFallback = this.readFieldValue(fieldname);
-										if (this.isFieldValueFilled(df, afterFallback) && !this.isControlInvalid(fieldname)) {
-											addBackgroundEntry(label, valueToType, "majburiy maydonni to'ldirish uchun");
-											roundProgress = true;
-										} else {
-											failedRequired.add(fieldname);
-										}
-									} else {
-										failedRequired.add(fieldname);
-									}
+									failedRequired.add(fieldname);
 								}
 						}
 						if (!roundProgress) break;
