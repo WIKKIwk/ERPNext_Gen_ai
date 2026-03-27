@@ -1308,6 +1308,7 @@
 			}
 
 			getCreateRecordEntryState(doctype) {
+				if (this.getVisibleBlockingDialog()) return "blocked_dialog";
 				if (this.isQuickEntryOpen()) return "quick_entry";
 				if (this.isOnDoctypeNewForm(doctype)) return "new_form";
 				if (this.isOnDoctypeForm(doctype)) return "existing_form";
@@ -1322,9 +1323,17 @@
 			async waitForCreateRecordEntryState(doctype, timeoutMs = 5200) {
 				const reachedState = await this.waitFor(() => {
 					const state = this.getCreateRecordEntryState(doctype);
-					return state === "new_form" || state === "quick_entry" ? state : false;
+					return state === "new_form" || state === "quick_entry" || state === "blocked_dialog"
+						? state
+						: false;
 				}, timeoutMs, 120);
-				if (reachedState === "new_form" || reachedState === "quick_entry") return reachedState;
+				if (
+					reachedState === "new_form" ||
+					reachedState === "quick_entry" ||
+					reachedState === "blocked_dialog"
+				) {
+					return reachedState;
+				}
 				return this.getCreateRecordEntryState(doctype);
 			}
 
