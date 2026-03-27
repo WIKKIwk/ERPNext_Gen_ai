@@ -102,6 +102,15 @@
 				return this.isNewDocRouteName(doctype, routeName) ? "new_form" : "existing_form";
 			}
 
+			getCurrentForm(doctype) {
+				const dtNorm = String(doctype || "").trim().toLowerCase();
+				if (!dtNorm) return null;
+				const frm = window.cur_frm;
+				if (!frm) return null;
+				if (String(frm.doctype || "").trim().toLowerCase() !== dtNorm) return null;
+				return frm;
+			}
+
 			isOnDoctypeNewForm(doctype) {
 				return this.getDoctypeFormState(doctype) === "new_form";
 			}
@@ -109,6 +118,31 @@
 			isOnDoctypeForm(doctype) {
 				const formState = this.getDoctypeFormState(doctype);
 				return formState === "new_form" || formState === "existing_form";
+			}
+
+			isDoctypeFormReady(doctype) {
+				const formState = this.getDoctypeFormState(doctype);
+				if (formState !== "new_form" && formState !== "existing_form") return false;
+				const frm = this.getCurrentForm(doctype);
+				if (!frm) return false;
+				const wrapper = frm.wrapper?.get?.(0) || frm.wrapper?.[0] || null;
+				if (wrapper && !isVisible(wrapper)) return false;
+				const fieldDict = frm.fields_dict && typeof frm.fields_dict === "object" ? frm.fields_dict : null;
+				if (fieldDict && Object.keys(fieldDict).length) return true;
+				const dtSlug = this.doctypeToRouteSlug(doctype);
+				if (!dtSlug) return false;
+				const controls = document.querySelectorAll(".layout-main-section .frappe-control[data-fieldname]");
+				for (const control of controls) {
+					if (!control || !isVisible(control)) continue;
+					const fieldname = String(control.getAttribute("data-fieldname") || "").trim();
+					if (fieldname) return true;
+				}
+				return false;
+			}
+
+			async waitForDoctypeFormReady(doctype, timeoutMs = 5200) {
+				const ready = await this.waitFor(() => (this.isDoctypeFormReady(doctype) ? true : false), timeoutMs, 120);
+				return Boolean(ready) && this.isDoctypeFormReady(doctype);
 			}
 
 			isOnDoctypeList(doctype) {

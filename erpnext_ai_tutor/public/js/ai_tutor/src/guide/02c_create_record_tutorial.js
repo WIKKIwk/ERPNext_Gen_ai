@@ -116,6 +116,24 @@
 					}
 				}
 
+				if (this.isOnDoctypeNewForm(doctype)) {
+					const formReady = await this.waitForDoctypeFormReady(doctype, 5200);
+					this.traceTutorialEvent("create_record.form_ready", {
+						ok: Boolean(formReady),
+						state: this.getCreateRecordEntryState(doctype),
+					});
+					if (!formReady) {
+						return await finish(
+							{
+								ok: false,
+								reached_target: false,
+								message: "Yangi forma route'i ochildi, lekin form elementlari hali tayyor bo'lmadi. Iltimos qayta urinib ko'ring.",
+							},
+							"form_not_ready_after_open"
+						);
+					}
+				}
+
 				if (!this.isOnDoctypeNewForm(doctype) && this.isQuickEntryOpen()) {
 					this.emitProgress('🧩 Quick Entry ochildi, to\'liq o\'rgatish uchun **Edit Full Form** ga o\'tamiz.');
 					if (stage === "show_save_only") {
@@ -146,6 +164,21 @@
 					if (openedFullForm) {
 						this.emitProgress("📝 `Edit Full Form` bosildi, endi to'liq formani to'ldirishga o'tamiz.");
 						await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
+						const fullFormReady = await this.waitForDoctypeFormReady(doctype, 5200);
+						this.traceTutorialEvent("create_record.full_form_ready", {
+							ok: Boolean(fullFormReady),
+							state: this.getCreateRecordEntryState(doctype),
+						});
+						if (!fullFormReady) {
+							return await finish(
+								{
+									ok: false,
+									reached_target: false,
+									message: "To'liq forma route'i ochildi, lekin form elementlari hali tayyor bo'lmadi. Iltimos qayta urinib ko'ring.",
+								},
+								"full_form_not_ready_after_open"
+							);
+						}
 					}
 				}
 

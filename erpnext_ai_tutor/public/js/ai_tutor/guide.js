@@ -1279,6 +1279,15 @@
 				return this.isNewDocRouteName(doctype, routeName) ? "new_form" : "existing_form";
 			}
 
+			getCurrentForm(doctype) {
+				const dtNorm = String(doctype || "").trim().toLowerCase();
+				if (!dtNorm) return null;
+				const frm = window.cur_frm;
+				if (!frm) return null;
+				if (String(frm.doctype || "").trim().toLowerCase() !== dtNorm) return null;
+				return frm;
+			}
+
 			isOnDoctypeNewForm(doctype) {
 				return this.getDoctypeFormState(doctype) === "new_form";
 			}
@@ -1286,6 +1295,31 @@
 			isOnDoctypeForm(doctype) {
 				const formState = this.getDoctypeFormState(doctype);
 				return formState === "new_form" || formState === "existing_form";
+			}
+
+			isDoctypeFormReady(doctype) {
+				const formState = this.getDoctypeFormState(doctype);
+				if (formState !== "new_form" && formState !== "existing_form") return false;
+				const frm = this.getCurrentForm(doctype);
+				if (!frm) return false;
+				const wrapper = frm.wrapper?.get?.(0) || frm.wrapper?.[0] || null;
+				if (wrapper && !isVisible(wrapper)) return false;
+				const fieldDict = frm.fields_dict && typeof frm.fields_dict === "object" ? frm.fields_dict : null;
+				if (fieldDict && Object.keys(fieldDict).length) return true;
+				const dtSlug = this.doctypeToRouteSlug(doctype);
+				if (!dtSlug) return false;
+				const controls = document.querySelectorAll(".layout-main-section .frappe-control[data-fieldname]");
+				for (const control of controls) {
+					if (!control || !isVisible(control)) continue;
+					const fieldname = String(control.getAttribute("data-fieldname") || "").trim();
+					if (fieldname) return true;
+				}
+				return false;
+			}
+
+			async waitForDoctypeFormReady(doctype, timeoutMs = 5200) {
+				const ready = await this.waitFor(() => (this.isDoctypeFormReady(doctype) ? true : false), timeoutMs, 120);
+				return Boolean(ready) && this.isDoctypeFormReady(doctype);
 			}
 
 			isOnDoctypeList(doctype) {
@@ -3127,6 +3161,24 @@
 					}
 				}
 
+				if (this.isOnDoctypeNewForm(doctype)) {
+					const formReady = await this.waitForDoctypeFormReady(doctype, 5200);
+					this.traceTutorialEvent("create_record.form_ready", {
+						ok: Boolean(formReady),
+						state: this.getCreateRecordEntryState(doctype),
+					});
+					if (!formReady) {
+						return await finish(
+							{
+								ok: false,
+								reached_target: false,
+								message: "Yangi forma route'i ochildi, lekin form elementlari hali tayyor bo'lmadi. Iltimos qayta urinib ko'ring.",
+							},
+							"form_not_ready_after_open"
+						);
+					}
+				}
+
 				if (!this.isOnDoctypeNewForm(doctype) && this.isQuickEntryOpen()) {
 					this.emitProgress('🧩 Quick Entry ochildi, to\'liq o\'rgatish uchun **Edit Full Form** ga o\'tamiz.');
 					if (stage === "show_save_only") {
@@ -3157,6 +3209,21 @@
 					if (openedFullForm) {
 						this.emitProgress("📝 `Edit Full Form` bosildi, endi to'liq formani to'ldirishga o'tamiz.");
 						await this.waitFor(() => this.isOnDoctypeNewForm(doctype), 5200, 120);
+						const fullFormReady = await this.waitForDoctypeFormReady(doctype, 5200);
+						this.traceTutorialEvent("create_record.full_form_ready", {
+							ok: Boolean(fullFormReady),
+							state: this.getCreateRecordEntryState(doctype),
+						});
+						if (!fullFormReady) {
+							return await finish(
+								{
+									ok: false,
+									reached_target: false,
+									message: "To'liq forma route'i ochildi, lekin form elementlari hali tayyor bo'lmadi. Iltimos qayta urinib ko'ring.",
+								},
+								"full_form_not_ready_after_open"
+							);
+						}
 					}
 				}
 
