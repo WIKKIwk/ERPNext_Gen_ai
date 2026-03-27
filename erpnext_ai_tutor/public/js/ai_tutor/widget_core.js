@@ -358,6 +358,49 @@
 			};
 		}
 
+		repairGuidePayloadFromOffer(guideRaw, guideOfferRaw) {
+			const guide = this.normalizeGuidePayload(guideRaw);
+			if (!guide) return null;
+			const guideOffer = this.normalizeGuideOfferPayload(guideOfferRaw);
+			if (!guideOffer?.show) return guide;
+
+			const offerMode = String(guideOffer.mode || "").trim().toLowerCase();
+			const targetLabel = String(guideOffer.target_label || guide.target_label || "").trim();
+			if (!targetLabel) return guide;
+
+			if (guide.tutorial && typeof guide.tutorial === "object") {
+				const tutorial = { ...guide.tutorial };
+				if (!String(tutorial.doctype || "").trim()) {
+					tutorial.doctype = targetLabel;
+				}
+				return { ...guide, tutorial };
+			}
+
+			if (offerMode === "create_record") {
+				return {
+					...guide,
+					tutorial: {
+						mode: "create_record",
+						stage: "open_and_fill_basic",
+						doctype: targetLabel,
+					},
+				};
+			}
+
+			if (offerMode === "manage_roles") {
+				return {
+					...guide,
+					tutorial: {
+						mode: "manage_roles",
+						stage: "open_roles_tab",
+						doctype: targetLabel || "User",
+					},
+				};
+			}
+
+			return guide;
+		}
+
 		normalizeRoutePath(value) {
 			const cleaned = String(value || "").trim();
 			if (!cleaned) return "";
@@ -2656,7 +2699,10 @@
 				}
 
 				this.applyTutorStateFromResponse(payload || r?.message);
-				const guide = this.normalizeGuidePayload(payload?.guide || payload?.data?.guide || r?.guide || null);
+				const guide = this.repairGuidePayloadFromOffer(
+					payload?.guide || payload?.data?.guide || r?.guide || null,
+					normalizedOffer
+				);
 				const replyText = String(payload?.reply || payload?.message || r?.message || "").trim();
 				if (replyText) {
 					await this.appendAssistantWithTypingEffect(replyText, {

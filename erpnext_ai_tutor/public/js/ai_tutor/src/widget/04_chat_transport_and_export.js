@@ -352,7 +352,10 @@
 				}
 
 				this.applyTutorStateFromResponse(payload || r?.message);
-				const guide = this.normalizeGuidePayload(payload?.guide || payload?.data?.guide || r?.guide || null);
+				const guide = this.repairGuidePayloadFromOffer(
+					payload?.guide || payload?.data?.guide || r?.guide || null,
+					normalizedOffer
+				);
 				const replyText = String(payload?.reply || payload?.message || r?.message || "").trim();
 				if (replyText) {
 					await this.appendAssistantWithTypingEffect(replyText, {
