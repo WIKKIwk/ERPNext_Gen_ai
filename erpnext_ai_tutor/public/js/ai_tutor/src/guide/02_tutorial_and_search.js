@@ -165,8 +165,8 @@
 			}
 
 			getCreateRecordEntryState(doctype) {
-				if (this.getVisibleBlockingDialog()) return "blocked_dialog";
 				if (this.isQuickEntryOpen()) return "quick_entry";
+				if (this.getVisibleBlockingDialog()) return "blocked_dialog";
 				if (this.isOnDoctypeNewForm(doctype)) return "new_form";
 				if (this.isOnDoctypeForm(doctype)) return "existing_form";
 				return "other";
@@ -384,16 +384,20 @@
 				for (const dialog of dialogs) {
 					if (!dialog || !isVisible(dialog)) continue;
 					if (dialog.closest(".erpnext-ai-tutor-root")) continue;
+					const dialogText = normalizeText(dialog.textContent || "");
+					const dialogTitle = normalizeText(
+						dialog.querySelector(".modal-title, .msgprint h4, .modal-header .title")?.textContent || ""
+					);
 					if (
 						dialog.querySelector(".quick-entry-dialog") ||
 						dialog.querySelector(".quick-entry-layout") ||
-						dialog.classList.contains("quick-entry-dialog")
+						dialog.classList.contains("quick-entry-dialog") ||
+						dialogText.includes("edit full form") ||
+						(dialogTitle.startsWith("new ") && dialogText.includes("save"))
 					) {
 						continue;
 					}
-					const title = normalizeText(
-						dialog.querySelector(".modal-title, .msgprint h4, .modal-header .title")?.textContent || ""
-					);
+					const title = dialogTitle;
 					const body = normalizeText(
 						dialog.querySelector(".msgprint, .modal-body, .modal-message, .frappe-confirm-message")?.textContent || ""
 					);
@@ -431,6 +435,12 @@
 			}
 
 			getQuickEntryDialog() {
+				const quickEntryWrapper =
+					window.frappe?.quick_entry?.dialog?.wrapper?.get?.(0) ||
+					window.frappe?.quick_entry?.dialog?.wrapper?.[0] ||
+					null;
+				if (quickEntryWrapper && isVisible(quickEntryWrapper)) return quickEntryWrapper;
+
 				const selectors = [
 					".modal.show .quick-entry-dialog",
 					".modal.show .quick-entry-layout",
@@ -439,7 +449,15 @@
 				];
 				for (const sel of selectors) {
 					const el = document.querySelector(sel);
-					if (el && isVisible(el)) return el;
+					if (!el || !isVisible(el)) continue;
+					const text = normalizeText(el.textContent || "");
+					const title = normalizeText(el.querySelector(".modal-title")?.textContent || "");
+					if (
+						text.includes("edit full form") ||
+						(title.startsWith("new ") && text.includes("save"))
+					) {
+						return el;
+					}
 				}
 				return null;
 			}
